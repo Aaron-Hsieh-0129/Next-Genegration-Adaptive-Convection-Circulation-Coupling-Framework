@@ -1,7 +1,6 @@
-#include "2DVVM/src/Declare.hpp"
-#include "CSSWM/src/construction.hpp"
-#include "CSSWM/src/define.hpp"
-#include "Eigen/src/Core/products/Parallelizer.h"
+#include "../2DVVM/src/Declare.hpp"
+#include "../CSSWM/src/construction.hpp"
+#include "../CSSWM/src/define.hpp"
 #include <cstdio>
 #ifdef _OPENMP
 #include <omp.h>
