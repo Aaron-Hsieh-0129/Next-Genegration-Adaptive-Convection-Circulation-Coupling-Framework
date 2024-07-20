@@ -1,0 +1,6 @@
+[submodule "2DVVM"]
+	path = 2DVVM
+	url = https://github.com/Aaron-Hsieh-0129/2D-Vector-Vorticity-Model.git
+[submodule "CSSWM"]
+	path = CSSWM
+	url = https://github.com/Aaron-Hsieh-0129/Cubed-Sphere-Shallow-Water-Model-A-grid.git
