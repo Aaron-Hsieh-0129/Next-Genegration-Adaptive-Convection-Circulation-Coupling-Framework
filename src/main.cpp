@@ -90,7 +90,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF_AB2/newTur_dt_2.2_cloud_2.2_csswm_2E5diff_p1/";
+    std::string path = "/data/Aaron/TMIF_AB2/newTur_dt_2.15_cloud_2.15_csswm_2E5diff_p1/";
 
     Config_CSSWM config_csswm(30., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
                         1, 2E5, 2E5, 0.06, 1200. * 60.);
@@ -220,8 +220,8 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 2.2;
-    double coupling_vvm_param = 2.2;
+    double coupling_csswm_param = 2.15;
+    double coupling_vvm_param = 2.15;
 
     double thm_mean = 0.;
     double th_mean = 0.;
@@ -420,8 +420,7 @@ int main(int argc, char **argv) {
                 }
             #endif
             
-            // output q all nc
-            vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
+            
         }
         #ifdef _OPENMP
         #pragma omp barrier
@@ -460,6 +459,7 @@ int main(int argc, char **argv) {
             int p = vvms_index[size].p;
             int i = vvms_index[size].i;
             int j = vvms_index[size].j;
+            vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
             vvms[p][i][j]->step++;
         }
         #ifdef _OPENMP
