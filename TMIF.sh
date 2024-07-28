@@ -2,8 +2,8 @@
 #SBATCH -N 1
 #SBATCH -n 40
 #SBATCH --nodelist=mogamd
-#SBATCH -o log/newTur_dt_2.2_cloud_2.2_csswm_2E5diff_p1.o
-#SBATCH -e log/newTur_dt_2.2_cloud_2.2_csswm_2E5diff_p1.e
+#SBATCH -o log/SP_newTur_dt_0.5_cloud_2E5diff_p1.o
+#SBATCH -e log/SP_newTur_dt_0.5_cloud_2E5diff_p1.e
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=b08209006@ntu.edu.tw
 
