@@ -16,7 +16,7 @@ using namespace netCDF;
 Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double Kx, double Kz) {
     return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 1500000.0, 
                       10000, path, 10, 
-                      Kx, Kz, 0.01, 0.0, 0.0, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
+                      Kx, Kz, 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
                       2.5E6, 1E5, 96500.0, addforcingtime, CASE);
 }
 
