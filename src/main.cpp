@@ -16,7 +16,7 @@ using namespace netCDF;
 Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double Kx, double Kz) {
     return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 1500000.0, 
                       10000, path, 10, 
-                      Kx, Kz, 0.01, 0.0, 0.0, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
+                      Kx, Kz, 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
                       2.5E6, 1E5, 96500.0, addforcingtime, CASE);
 }
 
@@ -90,9 +90,9 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF_AB2/newTur_dt_2.15_cloud_2.15_csswm_2E5diff_p1/";
+    std::string path = "/data/Aaron/TMIF_AB2/newTur_dt300_1_cloud__csswm_2E5diff_p1/";
 
-    Config_CSSWM config_csswm(30., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
+    Config_CSSWM config_csswm(300., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
                         1, 2E5, 2E5, 0.06, 1200. * 60.);
     CSSWM model_csswm(config_csswm);
 
@@ -220,8 +220,8 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 2.15;
-    double coupling_vvm_param = 2.15;
+    double coupling_csswm_param = 1.;
+    double coupling_vvm_param = 1.;
 
     double thm_mean = 0.;
     double th_mean = 0.;
