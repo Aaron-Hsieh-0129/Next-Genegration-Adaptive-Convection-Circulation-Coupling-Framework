@@ -271,12 +271,6 @@ int main(int argc, char **argv) {
         printf("n_vvm: %d, time_vvm: %f, n_csswm: %d,  time_csswm: %f\n", vvms[1][47][47]->step, time_vvm, n_csswm, time_csswm);
 
         if (time_vvm == time_csswm) {
-            if (n_csswm % model_csswm.outputstep == 0 || n_csswm == model_csswm.timeend-1 || n_csswm == model_csswm.timeend-2) {
-                #ifdef NCOUTPUT
-                    CSSWM::Outputs::huv_nc(n_csswm, model_csswm);
-                #endif
-            }
-
             // Exchange information for small scale forcing
             if (time_csswm != 0) {
                 #ifdef _OPENMP
@@ -291,6 +285,16 @@ int main(int argc, char **argv) {
                 }
                 #ifdef _OPENMP
                 #pragma omp barrier
+                #endif
+
+                // After adding the small scale forcing, we need to iterate the CSSWM model
+                CSSWM::Iteration::nextTimeStep(model_csswm);
+            }
+
+            // Output for CSSWM
+            if (n_csswm % model_csswm.outputstep == 0 || n_csswm == model_csswm.timeend-1 || n_csswm == model_csswm.timeend-2) {
+                #ifdef NCOUTPUT
+                    CSSWM::Outputs::huv_nc(n_csswm, model_csswm);
                 #endif
             }
 
@@ -477,9 +481,8 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
-        // Next time step for CSSWM
+        // Next time step for CSSWM (the iteration is done after adding the small scale forcing)
         if (time_csswm == time_vvm) {
-            CSSWM::Iteration::nextTimeStep(model_csswm);
             n_csswm++;
         }
 
