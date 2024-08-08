@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 60
+#SBATCH -n 81
 #SBATCH --nodelist=mogamd
-#SBATCH -o log/newTur_dt300_1_cloud_1_csswm_2E5diff_p1.o
-#SBATCH -e log/newTur_dt300_1_cloud_1_csswm_2E5diff_p1.e
+#SBATCH -o log/prof_RKM_dt600_2_cloud_2_csswm_2E5diff_p1.o
+#SBATCH -e log/prof_RKM_dt600_2_cloud_2_csswm_2E5diff_p1.e
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=b08209006@ntu.edu.tw
 
