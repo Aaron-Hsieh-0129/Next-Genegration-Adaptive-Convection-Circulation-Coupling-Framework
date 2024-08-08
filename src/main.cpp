@@ -109,7 +109,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/Grabowski/prof_RKM_dt600_2_cloud_2_csswm_2E5diff_p1/";
+    std::string path = "/data/Aaron/TMIF/Grab/prof_RKM_dt600_1_csswm_1_cloud_2E5diff_p1/";
 
     Config_CSSWM config_csswm(600., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
                         1, 2E5, 2E5, 0.06, 1200. * 60.);
@@ -239,8 +239,8 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 2.;
-    double coupling_vvm_param = 2.;
+    double coupling_csswm_param = 1.;
+    double coupling_vvm_param = 1.;
 
     double thm_mean = 0.;
     double th_mean = 0.;
@@ -277,14 +277,30 @@ int main(int argc, char **argv) {
                 #endif
             }
 
+            // Exchange information for small scale forcing
+            if (time_csswm != 0) {
+                #ifdef _OPENMP
+                #pragma omp parallel for
+                #endif
+                for (int size = 0; size < total_size; size++) {
+                    int p = vvms_index[size].p;
+                    int i = vvms_index[size].i;
+                    int j = vvms_index[size].j;
+                    
+                    model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
+                }
+                #ifdef _OPENMP
+                #pragma omp barrier
+                #endif
+            }
 
+            // Prediction for CSSWM
             CSSWM::Iteration::ph_pt_4(model_csswm);
             #ifndef Advection
                 CSSWM::Iteration::pu_pt_4(model_csswm);
                 CSSWM::Iteration::pv_pt_4(model_csswm);
             #endif
 
-            // Boundary exchange and interpolation
             model_csswm.BP_h(model_csswm);
             #ifndef Advection
                 model_csswm.BP_wind_interpolation2(model_csswm);
@@ -301,9 +317,6 @@ int main(int argc, char **argv) {
             #if defined(TIMEFILTER) && !defined(AB2Time)
                 CSSWM::NumericalProcess::timeFilterAll(model_csswm);
             #endif
-
-            // next step
-            // CSSWM::Iteration::nextTimeStep(model_csswm);
         }
         #ifdef _OPENMP
         #pragma omp barrier
@@ -361,6 +374,24 @@ int main(int argc, char **argv) {
         #ifdef _OPENMP
         #pragma omp barrier
         #endif
+
+
+        if (time_csswm == time_vvm) {
+            #ifdef _OPENMP
+            #pragma omp parallel for
+            #endif
+            for (int size = 0; size < total_size; size++) {
+                int p = vvms_index[size].p;
+                int i = vvms_index[size].i;
+                int j = vvms_index[size].j;
+                
+                Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+            }
+            #ifdef _OPENMP
+            #pragma omp barrier
+            #endif
+        }
+
 
         #ifdef _OPENMP
         #pragma omp parallel for
@@ -446,32 +477,13 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
-
+        // Next time step for CSSWM
         if (time_csswm == time_vvm) {
-            // Exchange information here
-            #ifdef _OPENMP
-            #pragma omp parallel for
-            #endif
-            for (int size = 0; size < total_size; size++) {
-                int p = vvms_index[size].p;
-                int i = vvms_index[size].i;
-                int j = vvms_index[size].j;
-                
-                Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
-
-                model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
-            }
-            #ifdef _OPENMP
-            #pragma omp barrier
-            #endif
-
-            // output_Qall(model_csswm.outputpath + (std::string) "Q_all/", n_csswm, Q_all);
-
             CSSWM::Iteration::nextTimeStep(model_csswm);
-
             n_csswm++;
         }
 
+        // Next time step for VVM
         #ifdef _OPENMP
         #pragma omp parallel for
         #endif
@@ -485,7 +497,6 @@ int main(int argc, char **argv) {
         #ifdef _OPENMP
         #pragma omp barrier
         #endif
-
     }
 
     deallocate_config(config_vvms, 6, model_csswm.nx, model_csswm.ny);
