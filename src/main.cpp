@@ -9,8 +9,7 @@
 
 using namespace netCDF;
 
-// #define AB2_COUPLE
-#define PROFILE
+// #define PROFILE
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -109,7 +108,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/Grab/prof_RKM_dt600_1_csswm_1_cloud_2E5diff_p1/";
+    std::string path = "/data/Aaron/TMIF/Grabowski/RKM_dt600_1_csswm_1_vvm_2E5diff_p1/";
 
     Config_CSSWM config_csswm(600., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
                         1, 2E5, 2E5, 0.06, 1200. * 60.);
@@ -268,7 +267,7 @@ int main(int argc, char **argv) {
 
         double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
         double time_csswm = n_csswm * model_csswm.dt;
-        printf("n_vvm: %d, time_vvm: %f, n_csswm: %d,  time_csswm: %f\n", vvms[1][47][47]->step, time_vvm, n_csswm, time_csswm);
+        printf("n_vvm: %d, time_vvm: %f, n_csswm: %d,  time_csswm: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm, n_csswm, time_csswm);
 
         if (time_vvm == time_csswm) {
             // Exchange information for small scale forcing
@@ -282,6 +281,7 @@ int main(int argc, char **argv) {
                     int j = vvms_index[size].j;
                     
                     model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
+                    // model_csswm.hp[p][i][j] = Q_all[p][i][j] + (model_csswm.hp[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
                 }
                 #ifdef _OPENMP
                 #pragma omp barrier
@@ -300,15 +300,11 @@ int main(int argc, char **argv) {
 
             // Prediction for CSSWM
             CSSWM::Iteration::ph_pt_4(model_csswm);
-            #ifndef Advection
-                CSSWM::Iteration::pu_pt_4(model_csswm);
-                CSSWM::Iteration::pv_pt_4(model_csswm);
-            #endif
+            CSSWM::Iteration::pu_pt_4(model_csswm);
+            CSSWM::Iteration::pv_pt_4(model_csswm);
 
             model_csswm.BP_h(model_csswm);
-            #ifndef Advection
-                model_csswm.BP_wind_interpolation2(model_csswm);
-            #endif
+            model_csswm.BP_wind_interpolation2(model_csswm);
 
             #if defined(DIFFUSION)
                 CSSWM::NumericalProcess::DiffusionAll(model_csswm);
@@ -316,7 +312,6 @@ int main(int argc, char **argv) {
 
             model_csswm.BP_h(model_csswm);
             model_csswm.BP_wind_interpolation2(model_csswm);
-
             
             #if defined(TIMEFILTER) && !defined(AB2Time)
                 CSSWM::NumericalProcess::timeFilterAll(model_csswm);
@@ -345,24 +340,18 @@ int main(int argc, char **argv) {
             #ifdef _OPENMP
             #pragma omp barrier
             #endif
-
-            // #if defined(AB2_COUPLE)
-            //     output_qall(path + "vvm/q_all/", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, q_all[1]);
-            // #else
-            //     output_qall(path + "vvm/q_all/", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, q_all);
-            // #endif
         }
 
 
-        // Get th_mean at time step n, which is before the iteration for CRM
-        #ifdef _OPENMP
-        #pragma omp parallel for
-        #endif
-        for (int size = 0; size < total_size; size++) {
-            int p = vvms_index[size].p;
-            int i = vvms_index[size].i;
-            int j = vvms_index[size].j;
-            if (time_csswm == time_vvm) {
+        if (time_csswm == time_vvm) {
+            // Get th_mean at time step n, which is before the iteration for CRM
+            #ifdef _OPENMP
+            #pragma omp parallel for
+            #endif
+            for (int size = 0; size < total_size; size++) {
+                int p = vvms_index[size].p;
+                int i = vvms_index[size].i;
+                int j = vvms_index[size].j;
                 th_mean = 0.;
                 for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
                     for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
@@ -371,25 +360,11 @@ int main(int argc, char **argv) {
                 }
                 th_mean /= ((vvm_nx-2) * (vvm_nz-2));
                 th_mean_all[p][i][j] = th_mean;
-            }
-            q_all[p][i][j] = coupling_vvm_param * (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
 
-        }
-        #ifdef _OPENMP
-        #pragma omp barrier
-        #endif
-
-
-        if (time_csswm == time_vvm) {
-            #ifdef _OPENMP
-            #pragma omp parallel for
-            #endif
-            for (int size = 0; size < total_size; size++) {
-                int p = vvms_index[size].p;
-                int i = vvms_index[size].i;
-                int j = vvms_index[size].j;
-                
+                q_all[p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
                 Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+                // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j]);
+                // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.hp[p][i][j]) / model_csswm.dt;
             }
             #ifdef _OPENMP
             #pragma omp barrier
@@ -447,19 +422,8 @@ int main(int argc, char **argv) {
             #if defined(TIMEFILTER) && !defined(AB2)
                 vvm::NumericalProcess::timeFilterAll(*vvms[p][i][j]);
             #endif
-        }
-        #ifdef _OPENMP
-        #pragma omp barrier
-        #endif
 
-        // Exchange information here, Large scale forcing. 
-        #ifdef _OPENMP
-        #pragma omp parallel for
-        #endif
-        for (int size = 0; size < total_size; size++) {
-            int p = vvms_index[size].p;
-            int i = vvms_index[size].i;
-            int j = vvms_index[size].j;
+            // Large Scale Forcing
             #if defined(PROFILE)
                 double total_heating = q_all[p][i][j] * (vvm_nz-2);
                 double heating = 0.;
@@ -470,12 +434,16 @@ int main(int argc, char **argv) {
                 #endif
                 for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
                     #if defined(PROFILE)
-                        vvms[p][i][j]->thp[i_vvm][k_vvm] += vvms[p][i][j]->dt * heating;
+                        vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
                     #else
                         vvms[p][i][j]->thp[i_vvm][k_vvm] += vvms[p][i][j]->dt * q_all[p][i][j];
                     #endif
                 }
             }
+
+            // VVM next step
+            vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
+            vvms[p][i][j]->step++;
         }
         #ifdef _OPENMP
         #pragma omp barrier
@@ -485,21 +453,6 @@ int main(int argc, char **argv) {
         if (time_csswm == time_vvm) {
             n_csswm++;
         }
-
-        // Next time step for VVM
-        #ifdef _OPENMP
-        #pragma omp parallel for
-        #endif
-        for (int size = 0; size < total_size; size++) {
-            int p = vvms_index[size].p;
-            int i = vvms_index[size].i;
-            int j = vvms_index[size].j;
-            vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
-            vvms[p][i][j]->step++;
-        }
-        #ifdef _OPENMP
-        #pragma omp barrier
-        #endif
     }
 
     deallocate_config(config_vvms, 6, model_csswm.nx, model_csswm.ny);
