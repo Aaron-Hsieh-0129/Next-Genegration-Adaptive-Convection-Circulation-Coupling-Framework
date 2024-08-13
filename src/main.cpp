@@ -245,8 +245,8 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 2.;
-    double coupling_vvm_param = 0.5;
+    double coupling_csswm_param = 1.;
+    double coupling_vvm_param = 1.;
 
     double thm_mean = 0.;
     double th_mean = 0.;
