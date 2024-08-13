@@ -9,7 +9,7 @@
 
 using namespace netCDF;
 
-// #define PROFILE
+#define PROFILE
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -108,7 +108,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/Grabowski/RKM_dt600_1_csswm_1_vvm_2E5diff_p1/";
+    std::string path = "/data/Aaron/TMIF/1vvm/prof_RKM_dt600_1_csswm_1_vvm_2E5diff_p1/";
 
     Config_CSSWM config_csswm(600., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
                         1, 2E5, 2E5, 0.06, 1200. * 60.);
@@ -129,32 +129,39 @@ int main(int argc, char **argv) {
                 // if (p == 1 && i == model_csswm.nx/2 && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
                 // if (p == 1 && (i >= model_csswm.nx/2-4 && i <= model_csswm.nx/2+4) && (j >= model_csswm.nx/2-4 && j <= model_csswm.nx/2+4)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
                 // if (p == 1 && (model_csswm.nx/2-3 <= i && i <= model_csswm.nx/2+3) && (j == model_csswm.ny/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                if (p == 1 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10) && (i == model_csswm.nx/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
+                // if (p == 1 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10) && (i == model_csswm.nx/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
+
+                if (p == 1 && i == model_csswm.nx/2 && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
             }
         }
     }
     printf("Configurations are set.\n");
 
-    int total_size = 81;
+    int total_size = 1;
     vvm_index vvms_index[total_size];
     int count = 0;
     for (int p = 0; p < 6; p++) {
         for (int i = 2; i <= model_csswm.nx-2; i++) {
             for (int j = 2; j <= model_csswm.ny-2; j++) {
-                if (p == 1 && (model_csswm.nx/2-30 <= i && i <= model_csswm.nx/2+30) && j == model_csswm.ny/2) {
-                    vvms_index[count] = {p, i, j};
-                    count++;
-                }
-                if (p == 1 && i == model_csswm.nx/2 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10 && j != model_csswm.ny/2)) {
-                    vvms_index[count] = {p, i, j};
-                    count++;
-                }
+                // if (p == 1 && (model_csswm.nx/2-30 <= i && i <= model_csswm.nx/2+30) && j == model_csswm.ny/2) {
+                //     vvms_index[count] = {p, i, j};
+                //     count++;
+                // }
+                // if (p == 1 && i == model_csswm.nx/2 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10 && j != model_csswm.ny/2)) {
+                //     vvms_index[count] = {p, i, j};
+                //     count++;
+                // }
 
                 // if (p == 1 && (i >= model_csswm.nx/2-10 && i <= model_csswm.nx/2+10) && (j >= model_csswm.nx/2-10 && j <= model_csswm.nx/2+10)) {
                 //     vvms_index[count] = {p, i, j};
                 //     count++;
                 // }
+
+                if (p == 1 && i == 47 && j == 47) {
+                    vvms_index[count] = {p, i, j};
+                    count++;
+                }
             }
         }
     }
@@ -238,8 +245,8 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 1.;
-    double coupling_vvm_param = 1.;
+    double coupling_csswm_param = 2.;
+    double coupling_vvm_param = 0.5;
 
     double thm_mean = 0.;
     double th_mean = 0.;
@@ -436,7 +443,7 @@ int main(int argc, char **argv) {
                     #if defined(PROFILE)
                         vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
                     #else
-                        vvms[p][i][j]->thp[i_vvm][k_vvm] += vvms[p][i][j]->dt * q_all[p][i][j];
+                        vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
                     #endif
                 }
             }
