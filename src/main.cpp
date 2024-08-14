@@ -10,6 +10,7 @@
 using namespace netCDF;
 
 #define PROFILE
+// #define AB2_Couple
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -251,8 +252,13 @@ int main(int argc, char **argv) {
     double thm_mean = 0.;
     double th_mean = 0.;
     double th_mean_all[6][model_csswm.nx][model_csswm.ny];
-    double Q_all[6][model_csswm.nx][model_csswm.ny];
-    double q_all[6][model_csswm.nx][model_csswm.ny];
+    #if defined(AB2_Couple)
+        double Q_all[2][6][model_csswm.nx][model_csswm.ny];
+        double q_all[2][6][model_csswm.nx][model_csswm.ny];
+    #else
+        double Q_all[6][model_csswm.nx][model_csswm.ny];
+        double q_all[6][model_csswm.nx][model_csswm.ny];
+    #endif
     // initialize Q_all, q_all
     #ifdef _OPENMP
     #pragma omp parallel for collapse(3)
@@ -260,9 +266,14 @@ int main(int argc, char **argv) {
     for (int p = 0; p < 6; p++) {
         for (int i = 0; i < model_csswm.nx; i++) {
             for (int j = 0; j < model_csswm.ny; j++) {
-                Q_all[p][i][j] = 0.;
                 th_mean_all[p][i][j] = 0.;
-                q_all[p][i][j] = 0.;
+                #if defined(AB2_Couple)
+                    Q_all[0][p][i][j] = Q_all[1][p][i][j] = 0.;
+                    q_all[0][p][i][j] = q_all[1][p][i][j] = 0.;
+                #else
+                    Q_all[p][i][j] = 0.;
+                    q_all[p][i][j] = 0.;
+                #endif
             }
         }
     }
@@ -287,7 +298,11 @@ int main(int argc, char **argv) {
                     int i = vvms_index[size].i;
                     int j = vvms_index[size].j;
                     
-                    model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
+                    #if defined(AB2_Couple)
+                        model_csswm.hp[p][i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * model_csswm.dt;
+                    #else
+                        model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
+                    #endif
                     // model_csswm.hp[p][i][j] = Q_all[p][i][j] + (model_csswm.hp[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
                 }
                 #ifdef _OPENMP
@@ -368,8 +383,13 @@ int main(int argc, char **argv) {
                 th_mean /= ((vvm_nx-2) * (vvm_nz-2));
                 th_mean_all[p][i][j] = th_mean;
 
-                q_all[p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
-                Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+                #if defined(AB2_Couple)
+                    q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
+                    Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+                #else
+                    q_all[p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
+                    Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+                #endif
                 // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j]);
                 // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.hp[p][i][j]) / model_csswm.dt;
             }
@@ -432,16 +452,32 @@ int main(int argc, char **argv) {
 
             // Large Scale Forcing
             #if defined(PROFILE)
-                double total_heating = q_all[p][i][j] * (vvm_nz-2);
-                double heating = 0.;
+                #if defined(AB2_Couple)
+                    double total_heating1 = q_all[model_csswm.step%2][p][i][j] * (vvm_nz-2);
+                    double total_heating2 = q_all[(model_csswm.step+1)%2][p][i][j] * (vvm_nz-2);
+                    double heating1 = 0.;
+                    double heating2 = 0.;
+                #else
+                    double total_heating = q_all[p][i][j] * (vvm_nz-2);
+                    double heating = 0.;
+                #endif
             #endif
             for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
                 #if defined(PROFILE)
-                    heating = total_heating * heating_weight[k_vvm];
+                    #if defined(AB2_Couple)
+                        heating1 = total_heating1 * heating_weight[k_vvm];
+                        heating2 = total_heating2 * heating_weight[k_vvm];
+                    #else
+                        heating = total_heating * heating_weight[k_vvm];
+                    #endif
                 #endif
                 for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
                     #if defined(PROFILE)
-                        vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
+                        #if defined(AB2_Couple)
+                            vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
+                        #else
+                            vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
+                        #endif
                     #else
                         vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
                     #endif
