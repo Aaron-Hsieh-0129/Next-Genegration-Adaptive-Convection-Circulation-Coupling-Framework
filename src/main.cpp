@@ -23,11 +23,11 @@ Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE
 
 
 
-// void output_qall(std::string dir,int n, double q[6][model_csswm.nx][model_csswm.ny]);
-// void output_Qall(std::string dir,int n, double Q[6][model_csswm.nx][model_csswm.ny]);
+// void output_qall(std::string dir,int n, double q[6][NX][NY]);
+// void output_Qall(std::string dir,int n, double Q[6][NX][NY]);
 
 vvm**** allocate_and_initialize(int dim1, int dim2, int dim3) {
-    // Allocate memory for 3D array (layers x model_csswm.nx x model_csswm.ny)
+    // Allocate memory for 3D array (layers x NX x NY)
     vvm**** array = new vvm***[dim1];
     for (int p = 0; p < dim1; ++p) {
         array[p] = new vvm**[dim2];
@@ -42,7 +42,7 @@ vvm**** allocate_and_initialize(int dim1, int dim2, int dim3) {
 }
 
 Config_VVM**** allocate_and_initialize_config(int dim1, int dim2, int dim3) {
-    // Allocate memory for 3D array (layers x model_csswm.nx x model_csswm.ny)
+    // Allocate memory for 3D array (layers x NX x NY)
     Config_VVM**** array = new Config_VVM***[dim1];
     for (int p = 0; p < 6; ++p) {
         array[p] = new Config_VVM**[dim2];
@@ -87,6 +87,8 @@ struct vvm_index {
 };
 
 
+CSSWM model_csswm;
+
 int main(int argc, char **argv) {
     #if defined(PROFILE)
         // This heating weight follows the Q1 heating profile for the data in 2DVVM/input/init.txt
@@ -109,52 +111,55 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/SP_new/prof_RKM_dt1800_2_csswm_2_vvm_2E5diff_cross/";
+    std::string path = "/data/Aaron/TMIF/SP_old_CSSWM/AB2_prof_RKM_dt900_3_csswm_3_vvm_2E5diff_lineless_3B/";
 
-    Config_CSSWM config_csswm(1800., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
-                        1, 2E5, 2E5, 0.06, 1200. * 60.);
-    CSSWM model_csswm(config_csswm);
+    // Config_CSSWM config_csswm(1800., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
+    //                     1, 2E5, 2E5, 0.06, 1200. * 60.);
+    // CSSWM model_csswm(config_csswm);
 
+
+    
     CSSWM::Init::Init2d(model_csswm);
     
 
-    Config_VVM**** config_vvms = allocate_and_initialize_config(6, model_csswm.nx, model_csswm.ny);
+    Config_VVM**** config_vvms = allocate_and_initialize_config(6, NX, NY);
     std::string path_vvm;
 
     for (int p = 0; p < 6; p++) {
-        for (int i = 0; i < model_csswm.nx; i++) {
-            for (int j = 0; j < model_csswm.ny; j++) {
+        for (int i = 0; i < NX; i++) {
+            for (int j = 0; j < NY; j++) {
                 path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
-                // if (p == 1 && (i >= model_csswm.nx/2-5 && i <= model_csswm.nx/2+5) && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                // if (p == 1 && (i >= model_csswm.nx/2-2 && i <= model_csswm.nx/2+2) && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                // if (p == 1 && i == model_csswm.nx/2 && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                // if (p == 1 && (i >= model_csswm.nx/2-4 && i <= model_csswm.nx/2+4) && (j >= model_csswm.nx/2-4 && j <= model_csswm.nx/2+4)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                // if (p == 1 && (model_csswm.nx/2-3 <= i && i <= model_csswm.nx/2+3) && (j == model_csswm.ny/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
-                if (p == 1 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10) && (i == model_csswm.nx/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
+                // if (p == 1 && (i >= NX/2-5 && i <= NX/2+5) && j == NY/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // if (p == 1 && (i >= NX/2-2 && i <= NX/2+2) && j == NY/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // if (p == 1 && i == NX/2 && j == NY/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // if (p == 1 && (i >= NX/2-4 && i <= NX/2+4) && (j >= NX/2-4 && j <= NX/2+4)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // if (p == 1 && (NX/2-3 <= i && i <= NX/2+3) && (j == NY/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 1, 200, 200));
+                // if (p == 1 && (NY/2-10 <= j && j <= NY/2+10) && (i == NX/2)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
+                if (p == 1 && (j == NY/2) && (NX/2-1 <= i && i <= NX/2+1)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
                 else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
 
-                // if (p == 1 && i == model_csswm.nx/2 && j == model_csswm.ny/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
+                // if (p == 1 && i == NX/2 && j == NY/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
             }
         }
     }
     printf("Configurations are set.\n");
 
-    int total_size = 81;
+    int total_size = 21;
     vvm_index vvms_index[total_size];
     int count = 0;
     for (int p = 0; p < 6; p++) {
-        for (int i = 2; i <= model_csswm.nx-2; i++) {
-            for (int j = 2; j <= model_csswm.ny-2; j++) {
-                if (p == 1 && (model_csswm.nx/2-30 <= i && i <= model_csswm.nx/2+30) && j == model_csswm.ny/2) {
+        for (int i = 2; i <= NX-2; i++) {
+            for (int j = 2; j <= NY-2; j++) {
+                if (p == 1 && (NX/2-10 <= i && i <= NX/2+10) && j == NY/2) {
                     vvms_index[count] = {p, i, j};
                     count++;
                 }
-                if (p == 1 && i == model_csswm.nx/2 && (model_csswm.ny/2-10 <= j && j <= model_csswm.ny/2+10 && j != model_csswm.ny/2)) {
-                    vvms_index[count] = {p, i, j};
-                    count++;
-                }
+                // if (p == 1 && i == NX/2 && (NY/2-10 <= j && j <= NY/2+10 && j != NY/2)) {
+                //     vvms_index[count] = {p, i, j};
+                //     count++;
+                // }
 
-                // if (p == 1 && (i >= model_csswm.nx/2-10 && i <= model_csswm.nx/2+10) && (j >= model_csswm.nx/2-10 && j <= model_csswm.nx/2+10)) {
+                // if (p == 1 && (i >= NX/2-10 && i <= NX/2+10) && (j >= NX/2-10 && j <= NX/2+10)) {
                 //     vvms_index[count] = {p, i, j};
                 //     count++;
                 // }
@@ -172,7 +177,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     
-    vvm**** vvms = allocate_and_initialize(6, model_csswm.nx, model_csswm.ny);
+    vvm**** vvms = allocate_and_initialize(6, NX, NY);
     #ifdef _OPENMP
     #pragma omp parallel for
     #endif
@@ -211,13 +216,12 @@ int main(int argc, char **argv) {
     #endif
     printf("VVMs are initialized.\n");
 
-    int n_csswm = 0;
-    double temp_csswm = model_csswm.timeend / model_csswm.dt, temp_vvm = model_csswm.timeend / config_vvms[1][model_csswm.nx/2][model_csswm.ny/2]->dt;
+    double temp_csswm = TIMEEND / DT, temp_vvm = TIMEEND / config_vvms[1][NX/2][NY/2]->dt;
     int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
-    CSSWM::Outputs::create_all_directory(model_csswm.outputpath);
+    CSSWM::Outputs::create_all_directory();
     // create Q_all directory
-    CSSWM::Outputs::create_directory(model_csswm.outputpath + "Q_all/");
+    CSSWM::Outputs::create_directory(OUTPUTPATH + (std::string) "Q_all/");
 
     #ifdef _OPENMP
     #pragma omp parallel for
@@ -246,18 +250,18 @@ int main(int argc, char **argv) {
     double exchange_coeff = 287. / 9.80665;
     double Q = 0.;
     
-    double coupling_csswm_param = 2.;
-    double coupling_vvm_param = 2.;
+    double coupling_csswm_param = 3.;
+    double coupling_vvm_param = 3.;
 
     double thm_mean = 0.;
     double th_mean = 0.;
-    double th_mean_all[6][model_csswm.nx][model_csswm.ny];
+    double th_mean_all[6][NX][NY];
     #if defined(AB2_Couple)
-        double Q_all[2][6][model_csswm.nx][model_csswm.ny];
-        double q_all[2][6][model_csswm.nx][model_csswm.ny];
+        double Q_all[2][6][NX][NY];
+        double q_all[2][6][NX][NY];
     #else
-        double Q_all[6][model_csswm.nx][model_csswm.ny];
-        double q_all[6][model_csswm.nx][model_csswm.ny];
+        double Q_all[6][NX][NY];
+        double q_all[6][NX][NY];
     #endif
 
     for (int size = 0; size < total_size; size++) {
@@ -276,7 +280,7 @@ int main(int argc, char **argv) {
         th_mean_all[p][i][j] /= ((vvm_nx-2) * (vvm_nz-2));
         
 
-        double total_heating = (model_csswm.h[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) * (vvm_nz-2);
+        double total_heating = (model_csswm.csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) * (vvm_nz-2);
 
         for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
             double heating = total_heating * heating_weight[k_vvm];
@@ -296,7 +300,7 @@ int main(int argc, char **argv) {
     tmp_th /= ((vvm_nx-2) * (vvm_nz-2));
 
     printf("tmp_th: %f, psuedo_h: %f\n", tmp_th, tmp_th*exchange_coeff);
-    printf("h: %f\n", model_csswm.h[1][47][47]);
+    printf("h: %f\n", model_csswm.csswm[1].h[47][47]);
    
 
     // initialize Q_all, q_all
@@ -304,8 +308,8 @@ int main(int argc, char **argv) {
     #pragma omp parallel for collapse(3)
     #endif
     for (int p = 0; p < 6; p++) {
-        for (int i = 0; i < model_csswm.nx; i++) {
-            for (int j = 0; j < model_csswm.ny; j++) {
+        for (int i = 0; i < NX; i++) {
+            for (int j = 0; j < NY; j++) {
                 th_mean_all[p][i][j] = 0.;
                 #if defined(AB2_Couple)
                     Q_all[0][p][i][j] = Q_all[1][p][i][j] = 0.;
@@ -321,11 +325,11 @@ int main(int argc, char **argv) {
     #pragma omp barrier
     #endif
 
-    while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm || n_csswm < nmax_csswm) {
+    while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm || model_csswm.step < nmax_csswm) {
 
         double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
-        double time_csswm = n_csswm * model_csswm.dt;
-        printf("n_vvm: %d, time_vvm: %f, n_csswm: %d,  time_csswm: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm, n_csswm, time_csswm);
+        double time_csswm = model_csswm.step * DT;
+        printf("n_vvm: %d, time_vvm: %f, n_csswm: %d,  time_csswm: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm, model_csswm.step, time_csswm);
 
         if (time_vvm == time_csswm) {
             // Exchange information for small scale forcing
@@ -338,19 +342,19 @@ int main(int argc, char **argv) {
                     int i = vvms_index[size].i;
                     int j = vvms_index[size].j;
 
-                    double thp_mean = 0.;
+                    double th_mean = 0.;
                     for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
                         for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                            thp_mean += vvms[p][i][j]->thp[i_vvm][k_vvm];
+                            th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
                         }
                     }
-                    thp_mean /= ((vvm_nx-2) * (vvm_nz-2));
+                    th_mean /= ((vvm_nx-2) * (vvm_nz-2));
                     
                     #if defined(AB2_Couple)
-                        model_csswm.hp[p][i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * model_csswm.dt;
+                        model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * DT;
                     #else
-                        // model_csswm.hp[p][i][j] += coupling_csswm_param * Q_all[p][i][j] * model_csswm.dt;
-                        model_csswm.hp[p][i][j] = thp_mean * exchange_coeff;
+                        // model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * Q_all[p][i][j] * DT;
+                        model_csswm.csswm[p].hp[i][j] = th_mean * exchange_coeff;
                     #endif
                 }
                 #ifdef _OPENMP
@@ -362,9 +366,9 @@ int main(int argc, char **argv) {
             }
 
             // Output for CSSWM
-            if (n_csswm % model_csswm.outputstep == 0 || n_csswm == model_csswm.timeend-1 || n_csswm == model_csswm.timeend-2) {
+            if (model_csswm.step % OUTPUTINTERVAL == 0 || model_csswm.step == TIMEEND-1 || model_csswm.step == TIMEEND-2) {
                 #ifdef NCOUTPUT
-                    CSSWM::Outputs::huv_nc(n_csswm, model_csswm);
+                    CSSWM::Outputs::huv_nc(model_csswm.step, model_csswm);
                 #endif
             }
 
@@ -373,7 +377,7 @@ int main(int argc, char **argv) {
             CSSWM::Iteration::pu_pt_4(model_csswm);
             CSSWM::Iteration::pv_pt_4(model_csswm);
 
-            model_csswm.BP_h(model_csswm);
+            CSSWM::BP_h(model_csswm);
             model_csswm.BP_wind_interpolation2(model_csswm);
 
             #if defined(DIFFUSION)
@@ -432,12 +436,12 @@ int main(int argc, char **argv) {
                 th_mean_all[p][i][j] = th_mean;
 
                 #if defined(AB2_Couple)
-                    q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
-                    Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
+                    q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / DT;
+                    Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
                 #else
-                    q_all[p][i][j] = (model_csswm.hp[p][i][j] / exchange_coeff - th_mean_all[p][i][j]) / model_csswm.dt;
-                    Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.h[p][i][j]) / model_csswm.dt;
-                    // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.hp[p][i][j]) / model_csswm.dt;
+                    q_all[p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / DT;
+                    Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
+                    // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].hp[i][j]) / DT;
                 #endif
             }
             #ifdef _OPENMP
@@ -541,23 +545,23 @@ int main(int argc, char **argv) {
 
         // Next time step for CSSWM (the iteration is done after adding the small scale forcing)
         if (time_csswm == time_vvm) {
-            n_csswm++;
+            model_csswm.step++;
         }
     }
 
-    deallocate_config(config_vvms, 6, model_csswm.nx, model_csswm.ny);
-    deallocate(vvms, 6, model_csswm.nx, model_csswm.ny);
+    deallocate_config(config_vvms, 6, NX, NY);
+    deallocate(vvms, 6, NX, NY);
     return 0;
 }
 
-// void output_qall(std::string dir, int n, double q[6][model_csswm.nx][model_csswm.ny]) {
+// void output_qall(std::string dir, int n, double q[6][NX][NY]) {
 //     NcFile dataFile(dir + std::to_string(n) + ".nc", NcFile::replace);
 //     // Create netCDF dimensions
 //     NcDim p = dataFile.addDim("p", 6);
-//     NcDim xDim = dataFile.addDim("x", model_csswm.nx);
-//     NcDim yDim = dataFile.addDim("y", model_csswm.ny);
-//     NcDim lonDim = dataFile.addDim("lon", model_csswm.nx);
-//     NcDim latDim = dataFile.addDim("lat", model_csswm.ny);
+//     NcDim xDim = dataFile.addDim("x", NX);
+//     NcDim yDim = dataFile.addDim("y", NY);
+//     NcDim lonDim = dataFile.addDim("lon", NX);
+//     NcDim latDim = dataFile.addDim("lat", NY);
 
 //     std::vector<NcDim> xyDim, lonlatDim;
 //     xyDim.push_back(p);
@@ -571,8 +575,8 @@ int main(int argc, char **argv) {
 //     startp.push_back(0);
 //     startp.push_back(0);
 //     countp.push_back(1);
-//     countp.push_back(model_csswm.nx);
-//     countp.push_back(model_csswm.ny);
+//     countp.push_back(NX);
+//     countp.push_back(NY);
 
 //     for (int p = 0; p < 6; p++) {
 //         startp[0] = p;
@@ -581,14 +585,14 @@ int main(int argc, char **argv) {
 //     return;
 // }
 
-// void output_Qall(std::string dir,int n, double Q[6][model_csswm.nx][model_csswm.ny]) {
+// void output_Qall(std::string dir,int n, double Q[6][NX][NY]) {
 //     NcFile dataFile(dir + std::to_string(n) + ".nc", NcFile::replace);       
 //     // Create netCDF dimensions
 //     NcDim p = dataFile.addDim("p", 6);
-//     NcDim xDim = dataFile.addDim("x", model_csswm.nx);
-//     NcDim yDim = dataFile.addDim("y", model_csswm.ny);
-//     NcDim lonDim = dataFile.addDim("lon", model_csswm.nx);
-//     NcDim latDim = dataFile.addDim("lat", model_csswm.ny);
+//     NcDim xDim = dataFile.addDim("x", NX);
+//     NcDim yDim = dataFile.addDim("y", NY);
+//     NcDim lonDim = dataFile.addDim("lon", NX);
+//     NcDim latDim = dataFile.addDim("lat", NY);
 
 //     std::vector<NcDim> xyDim, lonlatDim;
 //     xyDim.push_back(p);
@@ -602,8 +606,8 @@ int main(int argc, char **argv) {
 //     startp.push_back(0);
 //     startp.push_back(0);
 //     countp.push_back(1);
-//     countp.push_back(model_csswm.nx);
-//     countp.push_back(model_csswm.ny);
+//     countp.push_back(NX);
+//     countp.push_back(NY);
 
 //     for (int p = 0; p < 6; p++) {
 //         startp[0] = p;
