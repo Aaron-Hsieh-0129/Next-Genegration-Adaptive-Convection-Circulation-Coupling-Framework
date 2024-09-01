@@ -134,7 +134,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/nudge/dt600_1_csswm_1_vvm_2E5diff_5vvm_4B_1non_10kmcouple_Q1inter_30K/";
+    std::string path = "/data/Aaron/TMIF/0901_stable_version/dt600_1_csswm_1_vvm_2E5diff_7vvm_3B_4non_10kmcouple/";
 
     // Config_CSSWM config_csswm(1800., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
     //                     1, 2E5, 2E5, 0.06, 1200. * 60.);
@@ -167,98 +167,22 @@ int main(int argc, char **argv) {
 
                 // if (p == 1 && i == NX/2 && j == NY/2) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
 
-                if (p == 1 && ((i == 47 && j == 47) || (i == 43 && j == 47) || (i == 45 && j == 49) || (i == 45 && j == 45))) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
+                if (p == 1 && (46 <= i && i <= 48) && j == 47) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
                 else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
             }
         }
     }
     printf("Configurations are set.\n");
 
-    int total_size = 5;
+    int total_size = 7;
     vvm_index vvms_index[total_size];
     int count = 0;
     for (int p = 0; p < 6; p++) {
         for (int i = 2; i <= NX-2; i++) {
             for (int j = 2; j <= NY-2; j++) {
-                // if (p == 1 && (NX/2-10 <= i && i <= NX/2+10) && j == NY/2) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-                // if (p == 1 && i == NX/2 && (NY/2-10 <= j && j <= NY/2+10 && j != NY/2)) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // if (p == 1 && (i >= NX/2-10 && i <= NX/2+10) && (j >= NX/2-10 && j <= NX/2+10)) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // if (p == 1 && i == 47 && j == 47) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // This is for 5 points with 1 bubble and 4 non-bubble (distance 500 km)
-                // if (p == 1 && ((i == 47 && j == 47) || (i == 47 && j == 42) || (i == 47 && j == 52) || (i == 42 && j == 47) || (i == 52 && j == 47))) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // This is for 7 points with 3 bubble and 4 non-bubble (distance 500 km)
-                // if (p == 1 && (((i == 47 || i == 46 || i == 48) && j == 47) || (i == 47 && j == 42) || (i == 47 && j == 52) || (i == 42 && j == 47) || (i == 52 && j == 47))) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // This is for 7 points with 3 bubble and 4 non-bubble (distance 300 km)
-                // if (p == 1 && (((i == 47 || i == 46 || i == 48) && j == 47) || (i == 47 && j == 41) || (i == 47 && j == 53) || (i == 41 && j == 47) || (i == 53 && j == 47))) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-
-                // This is for 20 points with 10 bubble and 10 non-bubble (with 1 empty point in the middle)
-                // if (p == 1 && j == 47) {
-                //     if (i % 2 == 0 && (i >= 28 && i <= 66)) {
-                //         vvms_index[count] = {p, i, j};
-                //         count++;
-                //     }
-                // }
-
-                // This is for 20 points with 10 bubble and 10 non-bubble (with 2 empty point in the middle)
-                // if (p == 1 && j == 47) {
-                //     if ((i-1) % 3 == 0 && (i >= 19 && i <= 76)) {
-                //         vvms_index[count] = {p, i, j};
-                //         count++;
-                //     }
-                // }
-
-                // if (p == 1) {
-                //     if (i == 46) {
-                //         if (j % 2 == 0 && (38 <= j && j <= 56)) {
-                //             vvms_index[count] = {p, i, j};
-                //             count++;
-                //         }
-                //     } 
-
-                //     if (j == 47) {
-                //         if (i % 2 == 0 && (38 <= i && i <= 56)) {
-                //             vvms_index[count] = {p, i, j};
-                //             count++;
-                //         }
-                //     }
-                // }
-
-                if (p == 1) {
-                    if (j == 47 && (i == 47 || i == 43 || i == 45)) {
-                        vvms_index[count] = {p, i, j};
-                        count++;
-                    }
-
-                    if (i == 45 && (j == 45 || j == 49)) {
-                        vvms_index[count] = {p, i, j};
-                        count++;
-                    }
+                if (p == 1 && (44 <= i && i <= 50) && j == 47) {
+                    vvms_index[count] = {p, i, j};
+                    count++;
                 }
             }
         }

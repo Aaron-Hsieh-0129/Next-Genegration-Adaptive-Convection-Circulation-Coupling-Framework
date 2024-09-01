@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 6
+#SBATCH -n 7
 #SBATCH --nodelist=mogamd
-#SBATCH -o log/nudge/dt600_1_csswm_1_vvm_2E5diff_5vvm_4B_1non_10kmcouple_Q1inter_30K.o
-#SBATCH -e log/nudge/error_log/dt600_1_csswm_1_vvm_2E5diff_5vvm_4B_1non_10kmcouple_Q1inter_30K.e
+#SBATCH -o log/0901_stable_version/dt600_1_csswm_1_vvm_2E5diff_7vvm_3B_4non_10kmcouple.o
+#SBATCH -e log/0901_stable_version/error_log/dt600_1_csswm_1_vvm_2E5diff_7vvm_3B_4non_10kmcouple.e
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=b08209006@ntu.edu.tw
 
