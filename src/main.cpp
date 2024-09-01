@@ -11,8 +11,9 @@ using namespace netCDF;
 
 #define PROFILE
 // #define AB2_Couple
-#define Couple_10km
-#define Couple_time (1800.)
+// #define Couple_10km
+#define Couple_12km
+#define Couple_time (600.)
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -114,6 +115,18 @@ int main(int argc, char **argv) {
             0.01834093311833239, 0.016303051660739903, 0.014265170203147413, 0.012227288745554924, 0.01018940728796244, 0.008151525830369951, 0.006113644372777461, 0.004075762915184976, 0.002037881457592486,
             0.0
         };
+        #elif defined(Couple_12km)
+        double heating_weight[62] = {
+            0.,
+            0.0012225044493978194, 0.004229087830248994, 0.00721407219255957, 0.009589964232025298, 0.01192265823440983, 0.01382337186598241, 0.015335303163824239, 0.016847234461666062, 0.017840789314533548, 0.018661552019076256, 
+            0.019439116686537767, 0.020130285279836888, 0.02060546368773003, 0.021080642095623176, 0.021555820503516322, 0.02198780087432827, 0.022290187133896636, 0.0226357714305462, 0.022981355727195757, 0.023283741986764125, 
+            0.023456534135088903, 0.023586128246332487, 0.023715722357576074, 0.02384531646881966, 0.02393171254298205, 0.023758920394657268, 0.023629326283413684, 0.0234997321721701, 0.023370138060926512, 0.02324054394968293, 
+            0.022938157690114563, 0.0226357714305462, 0.022376583208059027, 0.022117394985571855, 0.021815008726003494, 0.02146942442935393, 0.02103744405854198, 0.02060546368773003, 0.02017348331691808, 0.019784700983187326, 
+            0.019352720612375373, 0.018575155944913865, 0.017797591277452354, 0.017063224647072037, 0.01628565997961053, 0.015551293349230213, 0.014730530644687507, 0.013736975791820021, 0.012743420938952534, 0.01174986608608505, 
+            0.010681696441895499, 0.009613526797705949, 0.0085453571535164, 0.00747718750932685, 0.0064090178651373, 0.005340848220947749, 0.0042726785767582005, 0.003204508932568649, 0.0021363392883791002, 0.0010681696441895501,
+            0.
+        };
+
         #else
         double heating_weight[102] = {
             0.,
@@ -135,11 +148,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/newmode_SSLSSS/300_1800_4vvm_2B_2non_1interval/";
-
-    // Config_CSSWM config_csswm(1800., 1., 1., 0.1, 86400 * 3 * 24., path + "csswm/", 
-    //                     1, 2E5, 2E5, 0.06, 1200. * 60.);
-    // CSSWM model_csswm(config_csswm);
+    std::string path = "/data/Aaron/TMIF/0901_stable_version/600_600_12kmcouple_7vvm_3B_4non/";
 
     CSSWM::Init::Init2d(model_csswm);
     
@@ -157,18 +166,13 @@ int main(int argc, char **argv) {
     }
     printf("Configurations are set.\n");
 
-    int total_size = 4;
+    int total_size = 7;
     vvm_index vvms_index[total_size];
     int count = 0;
     for (int p = 0; p < 6; p++) {
         for (int i = 2; i <= NX-2; i++) {
             for (int j = 2; j <= NY-2; j++) {
-                if (p == 1 && (46 == i || i == 48) && j == 47) {
-                    vvms_index[count] = {p, i, j};
-                    count++;
-                }
-
-                if (p == 1 && (i == 44 || i == 42) && j == 47 ) {
+                if (p == 1 && (44 <= i && i <= 50) && j == 47) {
                     vvms_index[count] = {p, i, j};
                     count++;
                 }
@@ -255,13 +259,11 @@ int main(int argc, char **argv) {
     int vvm_nx = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nx;
     int vvm_nz = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nz;
 
-    double exchange_coeff = 287. / 9.80665;
-    double Q = 0.;
+    double exchange_coeff = 0.;
     
     double coupling_csswm_param = 1.;
     double coupling_vvm_param = 1.;
 
-    double thm_mean = 0.;
     double th_mean = 0.;
     double th_mean_all[6][NX][NY];
     #if defined(AB2_Couple)
@@ -272,25 +274,50 @@ int main(int argc, char **argv) {
         double q_all[6][NX][NY];
     #endif
 
+    int k_couple = vvm_nz - 2;
+    #if defined(Couple_10km)
+        k_couple = 10000. / vvms[1][44][47]->dz;
+    #elif defined(Couple_12km)
+        k_couple = 12000. / vvms[1][44][47]->dz;
+    #else
+        k_couple = vvm_nz - 2;
+    #endif
+
+    // Get the exchange coefficient throguht the ratio of the h and the theta
+    #ifdef _OPENMP
+    #pragma omp parallel for
+    #endif
+    for (int size = 0; size < total_size; size++) {
+        int p = vvms_index[size].p;
+        int i = vvms_index[size].i;
+        int j = vvms_index[size].j;
+        
+        th_mean_all[p][i][j] = 0.;
+        for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+            for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
+                th_mean_all[p][i][j] += vvms[p][i][j]->th[i_vvm][k_vvm];
+            }
+        }
+        th_mean_all[p][i][j] /= ((vvm_nx-2) * k_couple);
+    }
+    #ifdef _OPENMP
+    #pragma omp barrier
+    #endif
+    exchange_coeff = model_csswm.csswm[1].h[44][47] / th_mean_all[1][44][47];
+    printf("exchange_coeff: %f\n", exchange_coeff);
+
+    // Tune profiles of some 2DVVMs (with Bubble) by the exchange coefficient
+    #ifdef _OPENMP
+    #pragma omp parallel for
+    #endif
     for (int size = 0; size < total_size; size++) {
         int p = vvms_index[size].p;
         int i = vvms_index[size].i;
         int j = vvms_index[size].j;
 
-        printf("p: %d, i: %d, j: %d\n", p, i, j);
-        
-        th_mean_all[p][i][j] = 0.;
-        for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
-            for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                th_mean_all[p][i][j] += vvms[p][i][j]->th[i_vvm][k_vvm];
-            }
-        }
-        th_mean_all[p][i][j] /= ((vvm_nx-2) * (vvm_nz-2));
-        
+        double total_heating = (model_csswm.csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) * k_couple;
 
-        double total_heating = (model_csswm.csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) * (vvm_nz-2);
-
-        for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
+        for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
             double heating = total_heating * heating_weight[k_vvm];
             for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
                 vvms[p][i][j]->th[i_vvm][k_vvm] += heating;
@@ -298,31 +325,9 @@ int main(int argc, char **argv) {
             }
         }   
     }
-
-    double tmp_th = 0.;
-    for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
-        for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-            tmp_th += vvms[1][46][47]->th[i_vvm][k_vvm];
-        }
-    }
-    tmp_th /= ((vvm_nx-2) * (vvm_nz-2));
-
-    printf("tmp_th: %f, psuedo_h: %f\n", tmp_th, tmp_th*exchange_coeff);
-    printf("h: %f\n", model_csswm.csswm[1].h[46][47]);
-
-    #if defined(Couple_10km)
-        double tmp2_th = 0.;
-        int k_10km = 10000. / vvms[1][46][47]->dz;
-        printf("z: %f\n", vvms[1][46][47]->z[k_10km]);
-        for (int k_vvm = 1; k_vvm <= k_10km; k_vvm++) {
-            for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                tmp2_th += vvms[1][46][47]->th[i_vvm][k_vvm];
-            }
-        }
-        tmp2_th /= ((vvm_nx-2) * k_10km);
-        double exchange_coeff2 = exchange_coeff * tmp_th / tmp2_th;
+    #ifdef _OPENMP
+    #pragma omp barrier
     #endif
-
 
     // initialize Q_all, q_all
     #ifdef _OPENMP
@@ -346,16 +351,14 @@ int main(int argc, char **argv) {
     #pragma omp barrier
     #endif
 
-
-    int CSSWM_running_step_for_coupling = Couple_time / DT;
     double next_coupling_time = Couple_time;
     while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm || model_csswm.step < nmax_csswm) {
 
         double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
         double time_csswm = model_csswm.step * DT;
 
-        if (model_csswm.csswm[1].h[46][47] != model_csswm.csswm[1].h[46][47]) {
-            printf("Nan\n");
+        if (model_csswm.csswm[1].h[44][47] != model_csswm.csswm[1].h[44][47]) {
+            printf("Error: Nan\n");
             return 1;
         }
 
@@ -404,38 +407,21 @@ int main(int argc, char **argv) {
             int p = vvms_index[size].p;
             int i = vvms_index[size].i;
             int j = vvms_index[size].j;
-            #if defined(Couple_10km)
-                th_mean = 0.;
-                for (int k_vvm = 1; k_vvm <= k_10km; k_vvm++) {
-                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
-                    }
+            th_mean = 0.;
+            for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+                for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
+                    th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
                 }
-                th_mean /= ((vvm_nx-2) * k_10km);
-            #else
-                th_mean = 0.;
-                for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
-                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
-                    }
-                }
-                th_mean /= ((vvm_nx-2) * (vvm_nz-2));
-            #endif
-            
+            }
+            th_mean /= ((vvm_nx-2) * k_couple);
             th_mean_all[p][i][j] = th_mean;
 
             #if defined(AB2_Couple)
                 q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / DT;
                 Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
             #else
-                #if defined(Couple_10km)
-                    q_all[p][i][j] = (model_csswm.csswm[p].h[i][j] / exchange_coeff2 - th_mean_all[p][i][j]) / DT;
-                    Q_all[p][i][j] = (exchange_coeff2 * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
-                #else
-                    q_all[p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / DT;
-                    Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
-                    // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].hp[i][j]) / DT;
-                #endif
+                q_all[p][i][j] = (model_csswm.csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) / DT;
+                Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / DT;
             #endif
         }
         #ifdef _OPENMP
@@ -512,65 +498,37 @@ int main(int argc, char **argv) {
                 // Large Scale Forcing
                 #if defined(PROFILE)
                     #if defined(AB2_Couple)
-                        double total_heating1 = q_all[model_csswm.step%2][p][i][j] * (vvm_nz-2);
-                        double total_heating2 = q_all[(model_csswm.step+1)%2][p][i][j] * (vvm_nz-2);
+                        double total_heating1 = q_all[model_csswm.step%2][p][i][j] * k_couple;
+                        double total_heating2 = q_all[(model_csswm.step+1)%2][p][i][j] * k_couple;
                         double heating1 = 0.;
                         double heating2 = 0.;
                     #else
-                        #if defined(Couple_10km)
-                            double total_heating = q_all[p][i][j] * k_10km;
-                        #else
-                            double total_heating = q_all[p][i][j] * (vvm_nz-2);
-                        #endif
+                        double total_heating = q_all[p][i][j] * k_couple;
                         double heating = 0.;
                     #endif
                 #endif
 
-                #if defined(Couple_10km)
-                    for (int k_vvm = 1; k_vvm <= k_10km; k_vvm++) {
+                for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+                    #if defined(PROFILE)
+                        #if defined(AB2_Couple)
+                            heating1 = total_heating1 * heating_weight[k_vvm];
+                            heating2 = total_heating2 * heating_weight[k_vvm];
+                        #else
+                            heating = total_heating * heating_weight[k_vvm];
+                        #endif
+                    #endif
+                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
                         #if defined(PROFILE)
                             #if defined(AB2_Couple)
-                                heating1 = total_heating1 * heating_weight[k_vvm];
-                                heating2 = total_heating2 * heating_weight[k_vvm];
+                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
                             #else
-                                heating = total_heating * heating_weight[k_vvm];
+                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
                             #endif
+                        #else
+                            vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
                         #endif
-                        for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                            #if defined(PROFILE)
-                                #if defined(AB2_Couple)
-                                    vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
-                                #else
-                                    vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
-                                #endif
-                            #else
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
-                            #endif
-                        }
                     }
-                #else
-                    for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
-                        #if defined(PROFILE)
-                            #if defined(AB2_Couple)
-                                heating1 = total_heating1 * heating_weight[k_vvm];
-                                heating2 = total_heating2 * heating_weight[k_vvm];
-                            #else
-                                heating = total_heating * heating_weight[k_vvm];
-                            #endif
-                        #endif
-                        for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                            #if defined(PROFILE)
-                                #if defined(AB2_Couple)
-                                    vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
-                                #else
-                                    vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
-                                #endif
-                            #else
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
-                            #endif
-                        }
-                    }
-                #endif
+                }
 
                 // VVM next step
                 vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
@@ -592,24 +550,13 @@ int main(int argc, char **argv) {
             int j = vvms_index[size].j;
 
             double th_mean = 0.;
-            #if defined(Couple_10km)
-                for (int k_vvm = 1; k_vvm <= k_10km; k_vvm++) {
-                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
-                    }
+            for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+                for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
+                    th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
                 }
-                th_mean /= ((vvm_nx-2) * k_10km);
-                model_csswm.csswm[p].h[i][j] = th_mean * exchange_coeff2;
-            #else
-                for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
-                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
-                    }
-                }
-                th_mean /= ((vvm_nx-2) * (vvm_nz-2));
-                // model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * Q_all[p][i][j] * DT;
-                model_csswm.csswm[p].hp[i][j] = th_mean * exchange_coeff;
-            #endif
+            }
+            th_mean /= ((vvm_nx-2) * k_couple);
+            model_csswm.csswm[p].h[i][j] = th_mean * exchange_coeff;
             
             #if defined(AB2_Couple)
                 model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * DT;
