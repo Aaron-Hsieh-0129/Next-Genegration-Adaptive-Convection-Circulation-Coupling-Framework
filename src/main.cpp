@@ -13,7 +13,7 @@ using namespace netCDF;
 // #define AB2_Couple
 // #define Couple_10km
 #define Couple_12km
-#define Couple_time (600.)
+#define Couple_time (3600.)
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -23,11 +23,6 @@ Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE
                       Kx, Kz, 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
                       2.5E6, 1E5, 96500.0, addforcingtime, CASE);
 }
-
-
-
-// void output_qall(std::string dir,int n, double q[6][NX][NY]);
-// void output_Qall(std::string dir,int n, double Q[6][NX][NY]);
 
 vvm**** allocate_and_initialize(int dim1, int dim2, int dim3) {
     // Allocate memory for 3D array (layers x NX x NY)
@@ -89,7 +84,7 @@ struct vvm_index {
     int p, i, j;
 };
 
-void output_qall(std::string dir, int n, double q[6][NX][NY]);
+void output_forcing(std::string dir, int n, double q[6][NX][NY]);
 
 CSSWM model_csswm;
 
@@ -138,7 +133,7 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/0904_couple_time/200_600_7vvm_3B_4non/";
+    std::string path = "/data/Aaron/TMIF/0908_couple_time/200_3600_7vvm_3B_4non/";
     
     CSSWM::Init::Init2d(model_csswm);
     
@@ -417,7 +412,7 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
-        output_qall(OUTPUTPATH + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
+        output_forcing(OUTPUTPATH + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
 
         while (time_vvm < next_coupling_time) {
             printf("VVM step: %d, time: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm);
@@ -546,6 +541,8 @@ int main(int argc, char **argv) {
                 }
             }
             th_mean /= ((vvm_nx-2) * k_couple);
+
+            Q_all[p][i][j] = (th_mean * exchange_coeff - model_csswm.csswm[p].h[i][j]);
             model_csswm.csswm[p].h[i][j] = th_mean * exchange_coeff;
             
             #if defined(AB2_Couple)
@@ -556,6 +553,8 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
+        output_forcing(OUTPUTPATH + (std::string) "Q_all/", (int) next_coupling_time / Couple_time, Q_all);
+
         next_coupling_time += Couple_time;
     }
 
@@ -564,7 +563,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-void output_qall(std::string dir, int n, double q[6][NX][NY]) {
+void output_forcing(std::string dir, int n, double q[6][NX][NY]) {
     NcFile dataFile(dir + std::to_string(n) + ".nc", NcFile::replace);
     // Create netCDF dimensions
     NcDim p = dataFile.addDim("p", 6);
@@ -578,7 +577,7 @@ void output_qall(std::string dir, int n, double q[6][NX][NY]) {
     xyDim.push_back(xDim);
     xyDim.push_back(yDim);
 
-    NcVar q_all = dataFile.addVar("q", ncDouble, xyDim);
+    NcVar q_all = dataFile.addVar("forcing", ncDouble, xyDim);
 
     std::vector<size_t> startp, countp;
     startp.push_back(0);
@@ -594,34 +593,3 @@ void output_qall(std::string dir, int n, double q[6][NX][NY]) {
     }
     return;
 }
-
-// void output_Qall(std::string dir,int n, double Q[6][NX][NY]) {
-//     NcFile dataFile(dir + std::to_string(n) + ".nc", NcFile::replace);       
-//     // Create netCDF dimensions
-//     NcDim p = dataFile.addDim("p", 6);
-//     NcDim xDim = dataFile.addDim("x", NX);
-//     NcDim yDim = dataFile.addDim("y", NY);
-//     NcDim lonDim = dataFile.addDim("lon", NX);
-//     NcDim latDim = dataFile.addDim("lat", NY);
-
-//     std::vector<NcDim> xyDim, lonlatDim;
-//     xyDim.push_back(p);
-//     xyDim.push_back(xDim);
-//     xyDim.push_back(yDim);
-
-//     NcVar q_all = dataFile.addVar("q", ncDouble, xyDim);
-
-//     std::vector<size_t> startp, countp;
-//     startp.push_back(0);
-//     startp.push_back(0);
-//     startp.push_back(0);
-//     countp.push_back(1);
-//     countp.push_back(NX);
-//     countp.push_back(NY);
-
-//     for (int p = 0; p < 6; p++) {
-//         startp[0] = p;
-//         q_all.putVar(startp, countp, Q[p]);
-//     }
-//     return;
-// }
