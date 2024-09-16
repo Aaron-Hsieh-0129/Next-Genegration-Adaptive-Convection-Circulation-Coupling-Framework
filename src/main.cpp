@@ -133,8 +133,9 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/0908_couple_time/200_3600_7vvm_3B_4non/";
-    
+    std::string path = "/data/Aaron/TMIF/0912_ensemble_smaller_perturb/200_3600_7vvm_3B_random1s_seed60_4non/";
+    int seed = 60;
+
     CSSWM::Init::Init2d(model_csswm);
     
     Config_VVM**** config_vvms = allocate_and_initialize_config(6, NX, NY);
@@ -145,7 +146,7 @@ int main(int argc, char **argv) {
             for (int j = 0; j < NY; j++) {
                 path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
 
-                if (p == 1 && (46 <= i && i <= 48) && (46 <= j && j <= 48)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
+                if (p == 1 && (46 <= i && i <= 48) && (46 <= j && j <= 48)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 1, 1, 200, 200));
                 // if (p == 1 && (45 <= i && i <= 49) && (45 <= j && j <= 49) && ((i != 47) && (j != 47))) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
                 else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
             }
@@ -447,7 +448,8 @@ int main(int argc, char **argv) {
 
                     // Generate new random th perturbation for tropical forcing case
                     if (vvms[p][i][j]->status_for_adding_forcing == true) {
-                        vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step);
+                        if (p == 1 && (46 <= i && i <= 48) && j == 47) vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step+seed, -0.001, 0.001, 1.);
+                        else vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step);
                     }
                     vvm::AddForcing(*vvms[p][i][j]);
                 #endif

@@ -2,8 +2,8 @@
 #SBATCH -N 1
 #SBATCH -n 7
 #SBATCH --nodelist=node01
-#SBATCH -o log/0908_couple_time/200_3600_7vvm_3B_4non.o
-#SBATCH -e log/0908_couple_time/error_log/200_3600_7vvm_3B_4non.e
+#SBATCH -o log/0912_ensemble_smaller_perturb/200_3600_7vvm_3B_random1s_seed60_4non.o
+#SBATCH -e log/0912_ensemble_smaller_perturb/error_log/200_3600_7vvm_3B_random1s_seed60_4non.e
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=b08209006@ntu.edu.tw
 
