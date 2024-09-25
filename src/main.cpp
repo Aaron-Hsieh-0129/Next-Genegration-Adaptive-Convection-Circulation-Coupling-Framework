@@ -6,6 +6,7 @@
 #include <omp.h>
 #endif
 #include <netcdf>
+#include <fstream>
 
 using namespace netCDF;
 
@@ -85,6 +86,7 @@ struct vvm_index {
 };
 
 void output_forcing(std::string dir, int n, double q[6][NX][NY]);
+std::map<std::string, std::string> read_config(const std::string& filename);
 
 CSSWM model_csswm;
 
@@ -133,11 +135,20 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path = "/data/Aaron/TMIF/0912_ensemble_smaller_perturb/200_3600_7vvm_3B_random1s_seed60_4non/";
-    int seed = 60;
+    std::string path;
+    int seed;
+    // std::string path = "/data/Aaron/TMIF/0912_ensemble_smaller_perturb/200_3600_7vvm_3B_random1s_seed60_4non/";
+    // int seed = 60;
+
+    // Read configuration file
+    std::map<std::string, std::string> config = read_config("../config.txt");
+    path = config["OUTPUTPATH"];
+    seed = std::stoi(config["SEED"]);
+    model_csswm.output_path = path + "csswm/";
+    
 
     CSSWM::Init::Init2d(model_csswm);
-    
+
     Config_VVM**** config_vvms = allocate_and_initialize_config(6, NX, NY);
     std::string path_vvm;
 
@@ -225,10 +236,10 @@ int main(int argc, char **argv) {
     double temp_csswm = TIMEEND / DT, temp_vvm = TIMEEND / config_vvms[1][NX/2][NY/2]->dt;
     int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
-    CSSWM::Outputs::create_all_directory();
+    CSSWM::Outputs::create_all_directory(model_csswm);
     // create Q_all directory
-    CSSWM::Outputs::create_directory(OUTPUTPATH + (std::string) "Q_all/");
-    CSSWM::Outputs::create_directory(OUTPUTPATH + (std::string) "q_all/");
+    CSSWM::Outputs::create_directory(model_csswm.output_path + (std::string) "Q_all/");
+    CSSWM::Outputs::create_directory(model_csswm.output_path + (std::string) "q_all/");
 
     #ifdef _OPENMP
     #pragma omp parallel for
@@ -413,7 +424,7 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
-        output_forcing(OUTPUTPATH + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
+        output_forcing(model_csswm.output_path + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
 
         while (time_vvm < next_coupling_time) {
             printf("VVM step: %d, time: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm);
@@ -555,7 +566,7 @@ int main(int argc, char **argv) {
         #pragma omp barrier
         #endif
 
-        output_forcing(OUTPUTPATH + (std::string) "Q_all/", (int) next_coupling_time / Couple_time, Q_all);
+        output_forcing(model_csswm.output_path + (std::string) "Q_all/", (int) next_coupling_time / Couple_time, Q_all);
 
         next_coupling_time += Couple_time;
     }
@@ -594,4 +605,26 @@ void output_forcing(std::string dir, int n, double q[6][NX][NY]) {
         q_all.putVar(startp, countp, q[p]);
     }
     return;
+}
+
+std::map<std::string, std::string> read_config(const std::string& filename) {
+    std::ifstream file(filename);
+    std::map<std::string, std::string> config;
+    std::string line;
+
+    // Read each line from the file
+    while (std::getline(file, line)) {
+        std::istringstream is_line(line);
+        std::string key;
+        // Extract the key before '='
+        if (std::getline(is_line, key, '=')) {
+            std::string value;
+            // Extract the value after '='
+            if (std::getline(is_line, value)) {
+                config[key] = value;  // Store the key-value pair in the map
+            }
+        }
+    }
+
+    return config;  // Return the map with all key-value pairs
 }
