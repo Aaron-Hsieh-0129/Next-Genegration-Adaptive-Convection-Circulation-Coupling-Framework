@@ -1,11 +1,11 @@
-# Next Genegration Adaptive Convection-Circulation Framework
+# Next Genegration Adaptive Convection-Circulation Coupling Framework
 
 
 This is a framework coupled a cubed-sphere shallow water model and a 2D vector vorticity cloud resolving model
 
 It's a developing project so the interface is not constructed completely. If you want to modify the logic inside the coupler or the two models, please check the Guidance for Code Modification.
 
-- [Next Genegration Adaptive Convection-Circulation Framework](#next-genegration-adaptive-convection-circulation-framework)
+- [Next Genegration Adaptive Convection-Circulation Coupling Framework](#next-genegration-adaptive-convection-circulation-coupling-framework)
   - [Prerequisite](#prerequisite)
   - [How to Use](#how-to-use)
     - [Guidance for Code Modification](#guidance-for-code-modification)
@@ -24,7 +24,7 @@ It's a developing project so the interface is not constructed completely. If you
 1. Clone the project using
 
    ```
-   git clone --recurse-submodules https://github.com/Aaron-Hsieh-0129/Tropical-Multiscale-Interaction-Framework.git
+   git clone --recurse-submodules https://github.com/Aaron-Hsieh-0129/Next-Genegration-Adaptive-Convection-Circulation-Coupling-Framework.git
    ```
 
 2. You are able to run the model by running the command under the project folder
