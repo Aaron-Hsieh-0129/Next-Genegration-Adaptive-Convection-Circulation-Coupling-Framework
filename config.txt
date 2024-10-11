@@ -1,2 +1,3 @@
 OUTPUTPATH=/data/Aaron/TMIF/test/200_3600_7vvm_3B_random1s_seed60_4non/
 SEED=60
+COUPLETIME=600

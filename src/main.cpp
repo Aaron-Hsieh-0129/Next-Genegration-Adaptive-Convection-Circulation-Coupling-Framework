@@ -14,7 +14,7 @@ using namespace netCDF;
 // #define AB2_Couple
 // #define Couple_10km
 #define Couple_12km
-#define Couple_time (3600.)
+// #define Couple_time (3600.)
 
 
 // CASE0: Nothing, CASE1:Bubble
@@ -144,8 +144,13 @@ int main(int argc, char **argv) {
     std::map<std::string, std::string> config = read_config("../config.txt");
     path = config["OUTPUTPATH"];
     seed = std::stoi(config["SEED"]);
+    double Couple_time = std::stod(config["COUPLETIME"]);
+
     model_csswm.output_path = path + "csswm/";
     
+    printf("output path: %s\n", path.c_str());
+    printf("seed: %d\n", seed);
+    printf("Coupling time: %f\n", Couple_time);
 
     CSSWM::Init::Init2d(model_csswm);
 
