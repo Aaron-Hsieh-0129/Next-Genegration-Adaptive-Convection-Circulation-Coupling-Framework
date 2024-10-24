@@ -44,7 +44,7 @@ include_directories(
     /home/Aaron/local/petsc/include
 )
 
-file(GLOB_RECURSE SRC CSSWM/src/*.cpp CSSWM/src/*.hpp 2DVVM/src/*.cpp 2DVVM/src/*.hpp src/main.cpp)
+file(GLOB_RECURSE SRC CSSWM/src/*.cpp CSSWM/src/*.hpp 2DVVM/src/*.cpp 2DVVM/src/*.hpp src/*.cpp src/*.hpp)
 # delete the main.cpp files from the 2DVVM and CSSWM directories
 list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/2DVVM/src/main.cpp)
 list(REMOVE_ITEM SRC ${CMAKE_CURRENT_SOURCE_DIR}/CSSWM/src/main.cpp)

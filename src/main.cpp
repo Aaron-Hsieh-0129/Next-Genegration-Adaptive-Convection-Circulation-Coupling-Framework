@@ -1,12 +1,13 @@
-#include "../2DVVM/src/Declare.hpp"
-#include "../CSSWM/src/construction.hpp"
-#include "../CSSWM/src/define.hpp"
-#include <cstdio>
+#include "allocate_csswm_vvms.hpp"
+#include "reading_config.hpp"
+
 #ifdef _OPENMP
-#include <omp.h>
+    #include <omp.h>
 #endif
-#include <netcdf>
-#include <fstream>
+#if defined(NCOUTPUT)
+    #include <netcdf>
+#endif
+#include <cstdio>
 
 using namespace netCDF;
 
@@ -16,77 +17,7 @@ using namespace netCDF;
 #define Couple_12km
 // #define Couple_time (3600.)
 
-
-// CASE0: Nothing, CASE1:Bubble
-Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double Kx, double Kz) {
-    return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 1500000.0, 
-                      10000, path, 50, 
-                      Kx, Kz, 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
-                      2.5E6, 1E5, 96500.0, addforcingtime, CASE);
-}
-
-vvm**** allocate_and_initialize(int dim1, int dim2, int dim3) {
-    // Allocate memory for 3D array (layers x NX x NY)
-    vvm**** array = new vvm***[dim1];
-    for (int p = 0; p < dim1; ++p) {
-        array[p] = new vvm**[dim2];
-        for (int i = 0; i < dim2; ++i) {
-            array[p][i] = new vvm*[dim3];
-            for (int j = 0; j < dim3; ++j) {
-                array[p][i][j] = nullptr; // Initialize to nullptr
-            }
-        }
-    }
-    return array;
-}
-
-Config_VVM**** allocate_and_initialize_config(int dim1, int dim2, int dim3) {
-    // Allocate memory for 3D array (layers x NX x NY)
-    Config_VVM**** array = new Config_VVM***[dim1];
-    for (int p = 0; p < 6; ++p) {
-        array[p] = new Config_VVM**[dim2];
-        for (int i = 0; i < dim2; ++i) {
-            array[p][i] = new Config_VVM*[dim3];
-            for (int j = 0; j < dim3; ++j) {
-                array[p][i][j] = nullptr; // Initialize to nullptr
-            }
-        }
-    }
-    return array;
-}
-
-void deallocate_config(Config_VVM**** array, int dim1, int dim2, int dim3) {
-    for (int p = 0; p < dim1; ++p) {
-        for (int i = 0; i < dim2; ++i) {
-            for (int j = 0; j < dim3; ++j) {
-                delete array[p][i][j];
-            }
-            delete[] array[p][i];
-        }
-        delete[] array[p];
-    }
-    delete[] array;
-}
-
-void deallocate(vvm**** array, int dim1, int dim2, int dim3) {
-    for (int p = 0; p < dim1; ++p) {
-        for (int i = 0; i < dim2; ++i) {
-            for (int j = 0; j < dim3; ++j) {
-                delete array[p][i][j];
-            }
-            delete[] array[p][i];
-        }
-        delete[] array[p];
-    }
-    delete[] array;
-}
-
-struct vvm_index {
-    int p, i, j;
-};
-
 void output_forcing(std::string dir, int n, double q[6][NX][NY]);
-std::map<std::string, std::string> read_config(const std::string& filename);
 
 CSSWM model_csswm;
 
@@ -135,59 +66,58 @@ int main(int argc, char **argv) {
     omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
-    std::string path;
-    int seed;
-    // std::string path = "/data/Aaron/TMIF/0912_ensemble_smaller_perturb/200_3600_7vvm_3B_random1s_seed60_4non/";
-    // int seed = 60;
-
     // Read configuration file
     std::map<std::string, std::string> config = read_config("../config.txt");
-    path = config["OUTPUTPATH"];
-    seed = std::stoi(config["SEED"]);
+    std::string path = config["OUTPUTPATH"];
+    int seed = std::stoi(config["SEED"]);
     double Couple_time = std::stod(config["COUPLETIME"]);
+    std::vector<vvm_index> Bubbles_p_i_j = parse_int_tuples(config["Bubble_p_i_j"]);
+    std::vector<vvm_index> NotBubbles_p_i_j = parse_int_tuples(config["NotBubble_p_i_j"]);
 
     model_csswm.output_path = path + "csswm/";
     
     printf("output path: %s\n", path.c_str());
     printf("seed: %d\n", seed);
     printf("Coupling time: %f\n", Couple_time);
+    // Display the parsed tuples
+    for (const vvm_index& tuple : Bubbles_p_i_j) {
+        printf("Bubble: p=%d, i=%d, j=%d\n", tuple.p, tuple.i, tuple.j);
+    }
+    for (const vvm_index& tuple : NotBubbles_p_i_j) {
+        printf("Not Bubble: p=%d, i=%d, j=%d\n", tuple.p, tuple.i, tuple.j);
+    }
 
     CSSWM::Init::Init2d(model_csswm);
 
     Config_VVM**** config_vvms = allocate_and_initialize_config(6, NX, NY);
     std::string path_vvm;
 
+    // Make configurations for all VVMs
     for (int p = 0; p < 6; p++) {
         for (int i = 0; i < NX; i++) {
             for (int j = 0; j < NY; j++) {
                 path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
-
-                if (p == 1 && (46 <= i && i <= 48) && (46 <= j && j <= 48)) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 1, 1, 200, 200));
-                // if (p == 1 && (45 <= i && i <= 49) && (45 <= j && j <= 49) && ((i != 47) && (j != 47))) config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 1, 200, 200));
-                else config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
+                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, 70, 70));
             }
         }
     }
+    // Change some configurations for Bubbles
+    for (auto Bubble : Bubbles_p_i_j) {
+        path_vvm = path + "vvm/" + std::to_string(Bubble.p) + "_" + std::to_string(Bubble.i) + "_" + std::to_string(Bubble.j) + "/";
+        config_vvms[Bubble.p][Bubble.i][Bubble.j] = new Config_VVM(createConfig(path_vvm, 1, 1, 200, 200));
+    }
     printf("Configurations are set.\n");
 
-    int total_size = 7;
+    int total_size = Bubbles_p_i_j.size() + NotBubbles_p_i_j.size();
     vvm_index vvms_index[total_size];
     int count = 0;
-    for (int p = 0; p < 6; p++) {
-        for (int i = 2; i <= NX-2; i++) {
-            for (int j = 2; j <= NY-2; j++) {
-                if (p == 1 && (44 <= i && i <= 50) && j == 47) {
-                // if (p == 1 && (46 <= i && i <= 48) && (46 <= j && j <= 48)) {
-                    vvms_index[count] = {p, i, j};
-                    count++;
-                }
-
-                // if (p == 1 && j == 47 && (41 <= i && i <= 45)) {
-                //     vvms_index[count] = {p, i, j};
-                //     count++;
-                // }
-            }
-        }
+    for (int size = 0; size < Bubbles_p_i_j.size(); size++) {
+        vvms_index[count] = Bubbles_p_i_j[size];
+        count++;
+    }
+    for (int size = 0; size < NotBubbles_p_i_j.size(); size++) {
+        vvms_index[count] = NotBubbles_p_i_j[size];
+        count++;
     }
     printf("count: %d\n", count);
     if (count != total_size) {
@@ -288,9 +218,9 @@ int main(int argc, char **argv) {
 
     int k_couple = vvm_nx - 2;
     #if defined(Couple_10km)
-        k_couple = 10000. / vvms[1][44][47]->dz;
+        k_couple = 10000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
     #elif defined(Couple_12km)
-        k_couple = 12000. / vvms[1][44][47]->dz;
+        k_couple = 12000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
     #else
         k_couple = vvm_nz - 2;
     #endif
@@ -310,8 +240,7 @@ int main(int argc, char **argv) {
         }
         th_mean_all[p][i][j] /= ((vvm_nx-2) * k_couple);
     }
-    exchange_coeff = model_csswm.csswm[1].h[44][47] / th_mean_all[1][44][47];
-
+    exchange_coeff = model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j] / th_mean_all[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j];
 
     for (int size = 0; size < total_size; size++) {
         int p = vvms_index[size].p;
@@ -357,7 +286,7 @@ int main(int argc, char **argv) {
         double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
         double time_csswm = model_csswm.step * DT;
 
-        if (model_csswm.csswm[1].h[44][47] != model_csswm.csswm[1].h[44][47]) {
+        if (model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j] != model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]) {
             printf("Nan\n");
             return 1;
         }
@@ -447,9 +376,12 @@ int main(int argc, char **argv) {
                         vvm::Output::outputalltxt(vvms[p][i][j]->step, *vvms[p][i][j]);
                     #endif
 
-                    #if defined(OUTPUTNC)
-                        vvm::Output::output_nc(vvms[p][i][j]->step, *vvms[p][i][j]);
-                    #endif
+                    #pragma omp critical
+                    {
+                        #if defined(OUTPUTNC)
+                            vvm::Output::output_nc(vvms[p][i][j]->step, *vvms[p][i][j]);
+                        #endif
+                    }
                 }
 
                 vvm::Iteration::pzeta_pt(*vvms[p][i][j]);
@@ -464,8 +396,14 @@ int main(int argc, char **argv) {
 
                     // Generate new random th perturbation for tropical forcing case
                     if (vvms[p][i][j]->status_for_adding_forcing == true) {
-                        if (p == 1 && (46 <= i && i <= 48) && j == 47) vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step+seed, -0.001, 0.001, 1.);
-                        else vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step);
+                        if (is_value_in_vvm_index(Bubbles_p_i_j, p, i, j)) {
+                            // Add random perturbation for Bubble case with a random seed
+                            vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step+seed, -0.001, 0.001, 1.);
+                        }
+                        else {
+                            // Add random perturbation for Not Bubble case with the same random seed
+                            vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step);
+                        }
                     }
                     vvm::AddForcing(*vvms[p][i][j]);
                 #endif
@@ -610,26 +548,4 @@ void output_forcing(std::string dir, int n, double q[6][NX][NY]) {
         q_all.putVar(startp, countp, q[p]);
     }
     return;
-}
-
-std::map<std::string, std::string> read_config(const std::string& filename) {
-    std::ifstream file(filename);
-    std::map<std::string, std::string> config;
-    std::string line;
-
-    // Read each line from the file
-    while (std::getline(file, line)) {
-        std::istringstream is_line(line);
-        std::string key;
-        // Extract the key before '='
-        if (std::getline(is_line, key, '=')) {
-            std::string value;
-            // Extract the value after '='
-            if (std::getline(is_line, value)) {
-                config[key] = value;  // Store the key-value pair in the map
-            }
-        }
-    }
-
-    return config;  // Return the map with all key-value pairs
 }

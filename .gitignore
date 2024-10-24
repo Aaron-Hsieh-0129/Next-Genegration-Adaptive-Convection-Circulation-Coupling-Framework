@@ -3,3 +3,4 @@ log
 .vscode
 build
 hostfile_mpi
+RUN
