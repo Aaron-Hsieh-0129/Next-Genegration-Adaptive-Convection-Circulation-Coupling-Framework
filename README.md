@@ -44,4 +44,6 @@ or you can use your own command by referencing the command in `TMIF.sh`
     OUTPUTPATH=/work/aaron900129/NGC3F/DATA/test/
     SEED=0
     COUPLETIME=600
+    Bubble_p_i_j=[(1,46,47), (1,47,47), (1,48,47)]
+    NotBubble_p_i_j=[(1,44,47), (1,45,47), (1,49,47), (1,50,47)]
     ```
