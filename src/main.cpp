@@ -73,12 +73,16 @@ int main(int argc, char **argv) {
     double Couple_time = std::stod(config["COUPLETIME"]);
     std::vector<vvm_index> Bubbles_p_i_j = parse_int_tuples(config["Bubble_p_i_j"]);
     std::vector<vvm_index> NotBubbles_p_i_j = parse_int_tuples(config["NotBubble_p_i_j"]);
+    int Bubble_case = std::stoi(config["BubbleCase"]);
+    double csswm_gravity = std::stod(config["CSSWM_GRAVITY"]);
 
     model_csswm.output_path = path + "csswm/";
+    model_csswm.gravity = csswm_gravity;
     
     printf("output path: %s\n", path.c_str());
     printf("seed: %d\n", seed);
     printf("Coupling time: %f\n", Couple_time);
+    printf("Gravity wave speed: %f\n", model_csswm.gravity);
     // Display the parsed tuples
     for (const vvm_index& tuple : Bubbles_p_i_j) {
         printf("Bubble: p=%d, i=%d, j=%d\n", tuple.p, tuple.i, tuple.j);
@@ -104,7 +108,7 @@ int main(int argc, char **argv) {
     // Change some configurations for Bubbles
     for (auto Bubble : Bubbles_p_i_j) {
         path_vvm = path + "vvm/" + std::to_string(Bubble.p) + "_" + std::to_string(Bubble.i) + "_" + std::to_string(Bubble.j) + "/";
-        config_vvms[Bubble.p][Bubble.i][Bubble.j] = new Config_VVM(createConfig(path_vvm, 1, 1, 200, 200));
+        config_vvms[Bubble.p][Bubble.i][Bubble.j] = new Config_VVM(createConfig(path_vvm, 1, Bubble_case, 200, 200));
     }
     printf("Configurations are set.\n");
 
@@ -416,7 +420,7 @@ int main(int argc, char **argv) {
                 vvm::Iteration::updateMean(*vvms[p][i][j]);
                 vvm::Turbulence::RKM_RKH(*vvms[p][i][j]);
                 vvm::NumericalProcess::Nudge_theta(*vvms[p][i][j]);
-                vvm::NumericalProcess::Nudge_zeta(*vvms[p][i][j]);
+                if (vvms[p][i][j]->CASE != 2) vvm::NumericalProcess::Nudge_zeta(*vvms[p][i][j]);
 
                 #if defined(WATER)
                     vvm::MicroPhysics::autoconversion(*vvms[p][i][j]);

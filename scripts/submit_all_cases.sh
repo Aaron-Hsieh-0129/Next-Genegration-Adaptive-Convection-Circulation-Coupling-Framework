@@ -1,7 +1,8 @@
-# Define the array of time values
-time_values=(600 3600 5400 7200 9000 10800 12600 14400 16200 18000)
-# Define the seed range
-seed_values=$(seq 90 10 90)
+#!/usr/bin/bash
+
+time_values=(5400)
+seed_values=$(seq 0 10 30)
+expname="1202_2speed_eva"
 
 # Iterate through the seeds first
 for seed in $seed_values; do
@@ -10,7 +11,7 @@ for seed in $seed_values; do
     # Then iterate through each time for the current seed
     for time in "${time_values[@]}"; do
         # Construct the expected folder pattern using the time and seed
-        for case in /home/Aaron/TMIF_VVM_CSSWM/RUN/1024_2speed/200_"$time"_*"_seed$seed"_*; do
+        for case in /home/Aaron/TMIF_VVM_CSSWM/RUN/${expname}/200_"$time"_*"_seed$seed"_*; do
             if [ -d "$case" ]; then  # Check if the path is a directory
                 echo "Running case with time: $time and seed: $seed in folder: $case"
                 cd "$case" || { echo "Failed to enter $case"; continue; }  # Change to the case directory

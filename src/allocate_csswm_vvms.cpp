@@ -1,6 +1,6 @@
 #include "allocate_csswm_vvms.hpp"
 
-// CASE: 0, Nothing, CASE: 1, Bubble
+// CASE: 0, Nothing; CASE: 1, Bubble; CASE: 2, Bubble with shear
 Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double Kx, double Kz) {
     return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 90000.0, 
                       10000, path, 50, 
