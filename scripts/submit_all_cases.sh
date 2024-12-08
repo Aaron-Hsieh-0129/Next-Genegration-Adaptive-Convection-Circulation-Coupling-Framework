@@ -1,8 +1,8 @@
 #!/usr/bin/bash
 
-time_values=(5400)
-seed_values=$(seq 0 10 30)
-expname="1202_2speed_eva"
+time_values=(600 3600 7200 10800 14400 18000 21600)
+seed_values=$(seq 130 10 140)
+expname="1202_05speed_eva"
 
 # Iterate through the seeds first
 for seed in $seed_values; do

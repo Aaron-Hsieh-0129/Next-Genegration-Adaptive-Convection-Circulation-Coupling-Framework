@@ -1,12 +1,12 @@
 #!/usr/bin/bash
 
 project_root="/home/Aaron/TMIF_VVM_CSSWM"
-expname="1202_2speed_eva"
-csswm_gravity=0.4
-time_values=(5400)
+expname="1202_05speed_eva"
+csswm_gravity=0.025
+time_values=(600 3600 7200 10800 14400 18000 21600)
 
 # Loop over seeds from 0 to 190, incrementing by 10
-for seed in $(seq 0 10 30); do
+for seed in $(seq 130 10 140); do
     for timestep in "${time_values[@]}"; do
         # Define unique case name
         case_name="200_${timestep}_7vvm_3B_random1s_seed${seed}_4non"
@@ -14,8 +14,8 @@ for seed in $(seq 0 10 30); do
         rm -rf $case_dir
         mkdir -p $case_dir
 
-        rsync -aq --exclude='build' --exclude='docs' --exclude='log' --exclude='*.md' --exclude='*.rst' $project_root/2DVVM $case_dir
-        rsync -aq --exclude='build' --exclude='docs' --exclude='log' ${project_root}/CSSWM ${case_dir}
+        rsync -aq --exclude='build' --exclude='docs' --exclude='log' --exclude='*.git' --exclude='*.md' --exclude='*.rst' $project_root/2DVVM $case_dir
+        rsync -aq --exclude='build' --exclude='docs' --exclude='log' --exclude='*.git' ${project_root}/CSSWM ${case_dir}
         cp -r ${project_root}/src ${case_dir}/src
         cp ${project_root}/CMakeLists.txt ${case_dir}/CMakeLists.txt
 

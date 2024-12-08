@@ -2,7 +2,7 @@
 
 // CASE: 0, Nothing; CASE: 1, Bubble; CASE: 2, Bubble with shear
 Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double Kx, double Kz) {
-    return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 90000.0, 
+    return Config_VVM(3.0, 200.0, 200.0, 100000, 20000, 60000.0, 
                       10000, path, 50, 
                       Kx, Kz, 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
                       2.5E6, 1E5, 96500.0, addforcingtime, CASE);
