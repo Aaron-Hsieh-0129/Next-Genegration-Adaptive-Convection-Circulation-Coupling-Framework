@@ -1,5 +1,7 @@
-OUTPUTPATH=/data/Aaron/TMIF/test/200_3600_7vvm_3B_random1s_seed60_4non/
-SEED=60
+OUTPUTPATH=/data/Aaron/TMIF/1210_1speed_30interval_eva/200_600_7vvm_3B_random1s_seed0_4non/
+SEED=0
 COUPLETIME=600
-Bubble_p_i_j=[(1,46,47), (1,47,47), (1,48,47)]
-NotBubble_p_i_j=[(1,44,47), (1,45,47), (1,49,47), (1,50,47)]
+Bubble_p_i_j=[(1,17,47),(1,47,47),(1,77,47)]
+NotBubble_p_i_j=[(3,2,47),(3,3,47)]
+BubbleCase=1
+CSSWM_GRAVITY=0.1
