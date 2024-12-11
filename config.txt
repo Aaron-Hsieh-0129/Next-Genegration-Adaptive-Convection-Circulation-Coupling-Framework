@@ -1,4 +1,4 @@
-OUTPUTPATH=/data/Aaron/TMIF/1210_1speed_30interval_eva/200_600_7vvm_3B_random1s_seed0_4non/
+OUTPUTPATH=/data/mog/TMIF/test/
 SEED=0
 COUPLETIME=600
 Bubble_p_i_j=[(1,17,47),(1,47,47),(1,77,47)]
