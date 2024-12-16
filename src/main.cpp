@@ -201,6 +201,30 @@ int main(int argc, char **argv) {
         CSSWM::Outputs::grid(model_csswm);
     #endif
 
+    // Copy grads ctl file to the output directory
+    std::string src1 = "../CSSWM/scripts/csswm.ctl";
+    std::string des1 = model_csswm.output_path + "nc/csswm.ctl";
+
+    // Construct the command
+    std::string cmd1 = "cp " + src1 + " " + des1;
+
+    // Execute the command
+    system(cmd1.c_str());
+
+    std::string src2 = "../2DVVM/scripts/vvm.ctl";
+    std::string des2;
+    std::string cmd2;
+
+    for (int size = 0; size < total_size; size++) {
+        int p = vvms_index[size].p;
+        int i = vvms_index[size].i;
+        int j = vvms_index[size].j;
+        des2 = vvms[p][i][j]->outputpath + "nc/vvm.ctl";
+        cmd2 = "cp " + src2 + " " + des2;
+        system(cmd2.c_str());
+    }
+
+
     int vvm_nx = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nx;
     int vvm_nz = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nz;
 
