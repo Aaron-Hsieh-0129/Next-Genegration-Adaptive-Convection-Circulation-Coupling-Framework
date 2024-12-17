@@ -1,23 +1,22 @@
-OUTPUTPATH=/data/Aaron/TMIF/test/
-SEED=0
-COUPLETIME=600
-Bubble_p_i_j=[(1,17,47),(1,47,47),(1,77,47)]
-NotBubble_p_i_j=[(3,2,47),(3,3,47)]
-BubbleCase=1
-CSSWM_GRAVITY=0.1
+OUTPUTPATH=/data/Aaron/TMIF/test
+SEED=0                                          # random seed for initial perturbation in the CRM bottom
+COUPLETIME=600                                  # Coupling time for NextGCC [s]
+Bubble_p_i_j=[(1,17,47),(1,47,47),(1,77,47)]    # CRMs with bubble inside
+NotBubble_p_i_j=[(3,2,47),(3,3,47)]             # CRMs with nothing inside
+BubbleCase=1                                    # Case0: Nothing, Case1: Bubble, Case2: Bubble+wind shear
+CSSWM_GRAVITY=0.1                               # gravity wave speed for CSSWM
 
 CSSWM_DT=200
-CSSWM_TIMEEND=60000
-CSSWM_OUTPUTSTEP=1
-CSSWM_GRAVITY=9.80665
+CSSWM_TIMEEND=60000                             # Integration Time [s]
+CSSWM_OUTPUTSTEP=1                              # Output frequency
 CSSWM_DIFFUSION_KX=200000
 CSSWM_DIFFUSION_KY=200000
 CSSWM_DIFFUSION_TS=0.06
 
-VVM_XRANGE=100000
-VVM_ZRANGE=20000
+VVM_XRANGE=100000                               # Domain for x [m]
+VVM_ZRANGE=20000                                # Domain for z [m]
 VVM_DT=3
 VVM_DX=200
-VVM_DZ=200
-VVM_TIMEEND=20000
-VVM_OUTPUTSTEP=50
+VVM_DZ=200                                      # Should be same as dx
+VVM_TIMEEND=20000                               # Integration Time [s]
+VVM_OUTPUTSTEP=50                               # Output frequency

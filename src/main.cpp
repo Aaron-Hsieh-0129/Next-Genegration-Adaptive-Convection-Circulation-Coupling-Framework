@@ -68,7 +68,12 @@ int main(int argc, char **argv) {
 
     // Read configuration file
     std::map<std::string, std::string> config = read_config("../config.txt");
-    std::string path = config["OUTPUTPATH"];
+    std::cout << "Configuration key-value pairs:" << std::endl;
+    for (const auto& pair : config) {
+        std::cout << pair.first << " = " << pair.second << std::endl;
+    }
+
+    std::string path = config["OUTPUTPATH"] + "/";
     int seed = std::stoi(config["SEED"]);
     double Couple_time = std::stod(config["COUPLETIME"]);
     std::vector<vvm_index> Bubbles_p_i_j = parse_int_tuples(config["Bubble_p_i_j"]);
