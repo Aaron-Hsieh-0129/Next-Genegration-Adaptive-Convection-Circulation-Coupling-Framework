@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
     #endif
     printf("VVMs are initialized.\n");
 
-    double temp_csswm = TIMEEND / DT, temp_vvm = TIMEEND / config_vvms[1][NX/2][NY/2]->dt;
+    double temp_csswm = csswm_timeend / csswm_dt, temp_vvm = vvm_timeend / vvm_dt;
     int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
     CSSWM::Outputs::create_all_directory(model_csswm);
