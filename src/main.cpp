@@ -87,6 +87,7 @@ int main(int argc, char **argv) {
     double csswm_diffusion_kx = std::stod(config["CSSWM_DIFFUSION_KX"]);
     double csswm_diffusion_ky = std::stod(config["CSSWM_DIFFUSION_KY"]);
     double csswm_diffusion_ts = std::stod(config["CSSWM_DIFFUSION_TS"]);
+    double csswm_addforcingtime = std::stod(config["CSSWM_ADDFORCING_TIME"]);
 
     double vvm_xrange = std::stod(config["VVM_XRANGE"]);
     double vvm_zrange = std::stod(config["VVM_ZRANGE"]);
@@ -105,6 +106,7 @@ int main(int argc, char **argv) {
     model_csswm.diffusion_kx = csswm_diffusion_kx;
     model_csswm.diffusion_ky = csswm_diffusion_ky;
     model_csswm.diffusion_ts = csswm_diffusion_ts;
+    model_csswm.addforcingtime = csswm_addforcingtime;
     
     printf("output path: %s\n", path.c_str());
     printf("seed: %d\n", seed);
@@ -358,6 +360,11 @@ int main(int argc, char **argv) {
                     CSSWM::Outputs::huv_nc(model_csswm.step, model_csswm);
                 #endif
             }
+
+            #if defined(EquatorialWave)
+                if (model_csswm.step * model_csswm.dt >= model_csswm.addforcingtime) model_csswm.status_add_forcing = false;
+                else model_csswm.status_add_forcing = true;
+            #endif
 
             // Prediction for CSSWM
             CSSWM::Iteration::ph_pt_4(model_csswm);

@@ -12,6 +12,7 @@ CSSWM_OUTPUTSTEP=1                              # Output frequency
 CSSWM_DIFFUSION_KX=200000
 CSSWM_DIFFUSION_KY=200000
 CSSWM_DIFFUSION_TS=0.06
+CSSWM_ADDFORCING_TIME=6000                     # If the user specifies adding forcing, the adding time can be specified here
 
 VVM_XRANGE=100000                               # Domain for x [m]
 VVM_ZRANGE=20000                                # Domain for z [m]
