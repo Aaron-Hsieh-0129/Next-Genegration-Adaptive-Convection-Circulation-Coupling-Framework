@@ -6,8 +6,10 @@ endif()
 
 project(TMIF VERSION 1.0.0)
 
-set(CMAKE_C_COMPILER "/home/Aaron/gcc13/bin/gcc")
-set(CMAKE_CXX_COMPILER "/home/Aaron/gcc13/bin/g++")
+set(HOME_DIR $ENV{HOME})
+
+set(CMAKE_C_COMPILER "${HOME_DIR}/gcc13/bin/gcc")
+set(CMAKE_CXX_COMPILER "${HOME_DIR}/gcc13/bin/g++")
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
@@ -52,13 +54,13 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 
 # Include directories
 include_directories(
-    ./2DVVM/include
-    /home/Aaron/local/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/2DVVM/include
+    ${HOME_DIR}/local/include
 )
 
 # Add PETSc include directories only if PETSc is enabled
 if(USE_PETSC)
-    include_directories(/home/Aaron/local/petsc/include)
+    include_directories(${HOME_DIR}/local/petsc/include)
 endif()
 
 # Source files
@@ -77,9 +79,9 @@ if(USE_PETSC)
 endif()
 
 # Find and link other libraries
-find_library(libncPath netcdf "/home/Aaron/local/lib")
-find_library(libncxxPath netcdf_c++4 "/home/Aaron/local/lib")
-find_library(libpetscPath petsc "/home/Aaron/local/petsc/lib")
+find_library(libncPath netcdf "${HOME_DIR}/local/lib")
+find_library(libncxxPath netcdf_c++4 "${HOME_DIR}/local/lib")
+find_library(libpetscPath petsc "${HOME_DIR}/local/petsc/lib")
 
 target_link_libraries(TMIF ${libncPath} ${libncxxPath})
 

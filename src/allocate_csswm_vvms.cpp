@@ -1,11 +1,11 @@
 #include "allocate_csswm_vvms.hpp"
 
 // CASE: 0, Nothing; CASE: 1, Bubble; CASE: 2, Bubble with shear
-Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double xrange, double zrange, double dx, double dz, double dt, double timeend, double outputstep) {
+Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double xrange, double zrange, double dx, double dz, double dt, double timeend, double outputstep, double vvm_moisture_nudge_time) {
     return Config_VVM(dt, dx, dz, xrange, zrange, timeend, 
                       10000, path, outputstep, 
                       70., 70., 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
-                      2.5E6, 1E5, 96500.0, addforcingtime, CASE);
+                      2.5E6, 1E5, 96500.0, addforcingtime, CASE, vvm_moisture_nudge_time);
 }
 
 vvm**** allocate_and_initialize(int dim1, int dim2, int dim3) {

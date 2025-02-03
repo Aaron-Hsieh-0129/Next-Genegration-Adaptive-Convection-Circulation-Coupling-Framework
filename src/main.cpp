@@ -88,6 +88,7 @@ int main(int argc, char **argv) {
     double csswm_diffusion_ky = std::stod(config["CSSWM_DIFFUSION_KY"]);
     double csswm_diffusion_ts = std::stod(config["CSSWM_DIFFUSION_TS"]);
     double csswm_addforcingtime = std::stod(config["CSSWM_ADDFORCING_TIME"]);
+    double csswm_h_nudge_time = std::stod(config["CSSWM_H_NUDGE_TIME"]);
 
     double vvm_xrange = std::stod(config["VVM_XRANGE"]);
     double vvm_zrange = std::stod(config["VVM_ZRANGE"]);
@@ -96,7 +97,9 @@ int main(int argc, char **argv) {
     double vvm_dt = std::stod(config["VVM_DT"]);
     double vvm_timeend = std::stod(config["VVM_TIMEEND"]);
     int vvm_outputstep = std::stoi(config["VVM_OUTPUTSTEP"]);
+    double vvm_moisture_nudge_time = std::stod(config["VVM_MOISTURE_NUDGE_TIME"]);
 
+    printf("vvm_moisutre_nudge_time: %f\n", vvm_moisture_nudge_time);
 
     model_csswm.output_path = path + "csswm/";
     model_csswm.gravity = csswm_gravity;
@@ -107,6 +110,7 @@ int main(int argc, char **argv) {
     model_csswm.diffusion_ky = csswm_diffusion_ky;
     model_csswm.diffusion_ts = csswm_diffusion_ts;
     model_csswm.addforcingtime = csswm_addforcingtime;
+    model_csswm.csswm_h_nudge_time = csswm_h_nudge_time;
     
     printf("output path: %s\n", path.c_str());
     printf("seed: %d\n", seed);
@@ -133,14 +137,14 @@ int main(int argc, char **argv) {
         for (int i = 0; i < NX; i++) {
             for (int j = 0; j < NY; j++) {
                 path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
-                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep));
+                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
             }
         }
     }
     // Change some configurations for Bubbles
     for (auto Bubble : Bubbles_p_i_j) {
         path_vvm = path + "vvm/" + std::to_string(Bubble.p) + "_" + std::to_string(Bubble.i) + "_" + std::to_string(Bubble.j) + "/";
-        config_vvms[Bubble.p][Bubble.i][Bubble.j] =  new Config_VVM(createConfig(path_vvm, 1, Bubble_case, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep));
+        config_vvms[Bubble.p][Bubble.i][Bubble.j] =  new Config_VVM(createConfig(path_vvm, 1, Bubble_case, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
     }
     printf("Configurations are set.\n");
 
@@ -384,6 +388,10 @@ int main(int argc, char **argv) {
             #if defined(TIMEFILTER) && !defined(AB2Time)
                 CSSWM::NumericalProcess::timeFilterAll(model_csswm);
             #endif
+
+            if (model_csswm.csswm_h_nudge_time != 0) {
+                CSSWM::NumericalProcess::NudgeH(model_csswm);
+            }
 
             CSSWM::Iteration::nextTimeStep(model_csswm);
             model_csswm.step++;

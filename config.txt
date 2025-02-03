@@ -1,23 +1,25 @@
-OUTPUTPATH=/data/Aaron/TMIF/test
+OUTPUTPATH=/data/Aaron/TMIF/0117_speed50_eva_20km20km/200_3600_7vvm_3B_random1s_seed0_4non_3600qv
 SEED=0                                          # random seed for initial perturbation in the CRM bottom
-COUPLETIME=600                                  # Coupling time for NextGCC [s]
-Bubble_p_i_j=[]    # CRMs with bubble inside
-NotBubble_p_i_j=[(0,42,50),(0,44,50),(0,46,50),(0,49,47),(0,51,47)]             # CRMs with nothing inside
+COUPLETIME=3600                                  # Coupling time for NextGCC [s]
+Bubble_p_i_j=[(1,46,47),(1,47,47),(1,48,47)]    # CRMs with bubble inside
+NotBubble_p_i_j=[(1,45,47),(1,49,47)]             # CRMs with nothing inside
 BubbleCase=1                                    # Case0: Nothing, Case1: Bubble, Case2: Bubble+wind shear
 CSSWM_GRAVITY=0.2391                               # gravity wave speed for CSSWM
 
 CSSWM_DT=200
-CSSWM_TIMEEND=60000                             # Integration Time [s]
+CSSWM_TIMEEND=120000                             # Integration Time [s]
 CSSWM_OUTPUTSTEP=1                              # Output frequency
 CSSWM_DIFFUSION_KX=200000
 CSSWM_DIFFUSION_KY=200000
 CSSWM_DIFFUSION_TS=0.06
 CSSWM_ADDFORCING_TIME=6000                     # If the user specifies adding forcing, the adding time can be specified here
+CSSWM_H_NUDGE_TIME=0                           # CSSWM h nudging time scale, if it is 0, the nudge will be closed.
 
-VVM_XRANGE=100000                               # Domain for x [m]
+VVM_XRANGE=20000                               # Domain for x [m]
 VVM_ZRANGE=20000                                # Domain for z [m]
 VVM_DT=3
 VVM_DX=200
 VVM_DZ=200                                      # Should be same as dx
-VVM_TIMEEND=60000                               # Integration Time [s]
+VVM_TIMEEND=120000                               # Integration Time [s]
 VVM_OUTPUTSTEP=50                               # Output frequency
+VVM_MOISTURE_NUDGE_TIME=3600                    # VVM moisture nudging time scale, if it is 0, the nudge will be closed.
