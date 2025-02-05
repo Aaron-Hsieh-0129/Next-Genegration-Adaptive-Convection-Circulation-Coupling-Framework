@@ -359,7 +359,7 @@ int main(int argc, char **argv) {
             printf("csswm_step: %d, csswm_time: %f\n", model_csswm.step, time_csswm);
 
             // Output for CSSWM
-            if (model_csswm.step % OUTPUTINTERVAL == 0 || model_csswm.step == TIMEEND-1 || model_csswm.step == TIMEEND-2) {
+            if (model_csswm.step % model_csswm.outputstep == 0 || model_csswm.step == model_csswm.timeend-1 || model_csswm.step == model_csswm.timeend-2) {
                 #ifdef NCOUTPUT
                     CSSWM::Outputs::huv_nc(model_csswm.step, model_csswm);
                 #endif

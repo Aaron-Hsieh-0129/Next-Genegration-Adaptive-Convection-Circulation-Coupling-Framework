@@ -21,28 +21,30 @@ for seed in $(seq 130 10 140); do
 
         cat <<EOL > ${case_dir}/config.txt
 OUTPUTPATH=/data/Aaron/TMIF/${expname}/${case_name}/
-SEED=${seed}
-COUPLETIME=${timestep}
-Bubble_p_i_j=[(1,46,47),(1,47,47),(1,48,47)]
-NotBubble_p_i_j=[(1,45,47),(1,49,47)]
-BubbleCase=1
-CSSWM_GRAVITY=${csswm_gravity}
+SEED=${seed}                                          # random seed for initial perturbation in the CRM bottom
+COUPLETIME=${timestep}                                # Coupling time for NextGCC [s]
+Bubble_p_i_j=[(1,46,47),(1,47,47),(1,48,47)]          # CRMs with bubble inside
+NotBubble_p_i_j=[(1,45,47),(1,49,47)]                 # CRMs with nothing inside
+BubbleCase=1                                          # Case0: Nothing, Case1: Bubble, Case2: Bubble+wind shear
+CSSWM_GRAVITY=${csswm_gravity}                        # gravity wave speed for CSSWM
 
 CSSWM_DT=200
-CSSWM_TIMEEND=60000
-CSSWM_OUTPUTSTEP=1
-CSSWM_GRAVITY=9.80665
+CSSWM_TIMEEND=60000                                   # Integration Time [s]
+CSSWM_OUTPUTSTEP=1                                    # Output frequency
 CSSWM_DIFFUSION_KX=200000
 CSSWM_DIFFUSION_KY=200000
 CSSWM_DIFFUSION_TS=0.06
+CSSWM_ADDFORCING_TIME=0                               # If the user specifies adding forcing, the adding time can be specified here
+CSSWM_H_NUDGE_TIME=0                                  # CSSWM h nudging time scale, if it is 0, the nudge will be closed.
 
-VVM_XRANGE=100000
-VVM_ZRANGE=20000
+VVM_XRANGE=100000                                     # Domain for x [m]
+VVM_ZRANGE=20000                                      # Domain for z [m]
 VVM_DT=3
 VVM_DX=200
-VVM_DZ=200
-VVM_TIMEEND=20000
-VVM_OUTPUTSTEP=50
+VVM_DZ=200                                            # Should be same as dx
+VVM_TIMEEND=20000                                     # Integration Time [s]                                
+VVM_OUTPUTSTEP=50                                     # Output frequency                 
+VVM_MOISTURE_NUDGE_TIME=0                             # VVM moisture nudging time scale, if it is 0, the nudge will be closed.
 EOL
 
         # Write the job script (TMIF.sh) for the case
