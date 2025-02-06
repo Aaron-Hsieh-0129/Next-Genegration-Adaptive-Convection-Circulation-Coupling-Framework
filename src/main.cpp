@@ -345,7 +345,7 @@ int main(int argc, char **argv) {
     #endif
 
     double next_coupling_time = Couple_time;
-    while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm || model_csswm.step < nmax_csswm) {
+    while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm && model_csswm.step < nmax_csswm) {
 
         double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
         double time_csswm = model_csswm.step * DT;
