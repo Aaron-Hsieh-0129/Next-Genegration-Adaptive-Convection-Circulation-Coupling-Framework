@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH -N 1
-#SBATCH -n 10
+#SBATCH -n 5
+#SBATCH -o log/test.o
+#SBATCH -e log/test.o
 #SBATCH --nodelist=mogamd
-#SBATCH -o log/Gill.o
-#SBATCH -e log/Gill.e
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=b08209006@ntu.edu.tw
 

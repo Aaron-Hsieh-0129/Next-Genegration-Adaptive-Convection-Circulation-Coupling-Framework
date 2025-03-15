@@ -4,7 +4,7 @@
 Config_VVM createConfig(const std::string& path, double addforcingtime, int CASE, double xrange, double zrange, double dx, double dz, double dt, double timeend, double outputstep, double vvm_moisture_nudge_time) {
     return Config_VVM(dt, dx, dz, xrange, zrange, timeend, 
                       10000, path, outputstep, 
-                      70., 70., 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
+                      100., 100., 0.01, 1E-22, 9.80665, 1003.5, 716.5, 287.0, 
                       2.5E6, 1E5, 96500.0, addforcingtime, CASE, vvm_moisture_nudge_time);
 }
 
@@ -39,19 +39,28 @@ Config_VVM**** allocate_and_initialize_config(int dim1, int dim2, int dim3) {
 }
 
 void deallocate_config(Config_VVM**** array, int dim1, int dim2, int dim3) {
+    if (array == nullptr) return;
+    
     for (int p = 0; p < dim1; ++p) {
-        for (int i = 0; i < dim2; ++i) {
-            for (int j = 0; j < dim3; ++j) {
-                delete array[p][i][j];
+        if (array[p] != nullptr) {
+            for (int i = 0; i < dim2; ++i) {
+                if (array[p][i] != nullptr) {
+                    for (int j = 0; j < dim3; ++j) {
+                        if (array[p][i][j] != nullptr) delete array[p][i][j];
+                    }
+                    delete[] array[p][i];
+                }
             }
-            delete[] array[p][i];
+            delete[] array[p];
         }
-        delete[] array[p];
     }
     delete[] array;
+    return;
 }
 
 void deallocate(vvm**** array, int dim1, int dim2, int dim3) {
+    if (array == nullptr) return;
+
     for (int p = 0; p < dim1; ++p) {
         for (int i = 0; i < dim2; ++i) {
             for (int j = 0; j < dim3; ++j) {
@@ -62,4 +71,5 @@ void deallocate(vvm**** array, int dim1, int dim2, int dim3) {
         delete[] array[p];
     }
     delete[] array;
+    return;
 }

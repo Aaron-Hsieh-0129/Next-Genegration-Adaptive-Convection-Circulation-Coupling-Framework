@@ -1,12 +1,12 @@
 #!/usr/bin/bash
 
 project_root="/home/Aaron/TMIF_VVM_CSSWM"
-expname="1202_05speed_eva"
-csswm_gravity=0.025
-time_values=(600 3600 7200 10800 14400 18000 21600)
+expname="0227_p3"
+csswm_gravity=0.4
+time_values=(600 3600 7200 10800 14400 18000 21600 25200 28800 32400 36000)
 
 # Loop over seeds from 0 to 190, incrementing by 10
-for seed in $(seq 130 10 140); do
+for seed in $(seq 0 10 0); do
     for timestep in "${time_values[@]}"; do
         # Define unique case name
         case_name="200_${timestep}_7vvm_3B_random1s_seed${seed}_4non"
@@ -20,7 +20,7 @@ for seed in $(seq 130 10 140); do
         cp ${project_root}/CMakeLists.txt ${case_dir}/CMakeLists.txt
 
         cat <<EOL > ${case_dir}/config.txt
-OUTPUTPATH=/data/Aaron/TMIF/${expname}/${case_name}/
+OUTPUTPATH=/data/Aaron/NextACC_p3/${expname}/${case_name}/
 SEED=${seed}                                          # random seed for initial perturbation in the CRM bottom
 COUPLETIME=${timestep}                                # Coupling time for NextGCC [s]
 Bubble_p_i_j=[(1,46,47),(1,47,47),(1,48,47)]          # CRMs with bubble inside
@@ -42,7 +42,7 @@ VVM_ZRANGE=20000                                      # Domain for z [m]
 VVM_DT=3
 VVM_DX=200
 VVM_DZ=200                                            # Should be same as dx
-VVM_TIMEEND=20000                                     # Integration Time [s]                                
+VVM_TIMEEND=60000                                     # Integration Time [s]                                
 VVM_OUTPUTSTEP=50                                     # Output frequency                 
 VVM_MOISTURE_NUDGE_TIME=0                             # VVM moisture nudging time scale, if it is 0, the nudge will be closed.
 EOL
