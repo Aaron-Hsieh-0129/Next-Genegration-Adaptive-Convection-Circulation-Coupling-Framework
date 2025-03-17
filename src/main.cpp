@@ -8,15 +8,29 @@
     #include <netcdf>
 #endif
 #include <cstdio>
+#include <mpi.h>
 
 using namespace netCDF;
 
-#define PROFILE
-// #define AB2_Couple
+#define MASTER_RANK 0
 
-void output_forcing(std::string dir, int n, double q[6][NX][NY]);
 
-CSSWM model_csswm;
+
+typedef struct {
+    int p, i, j;
+    double value;
+} data_send;
+
+MPI_Datatype create_data_send_type() {
+    MPI_Datatype data_send_type;
+    int lengths[2] = {3, 1};
+    const MPI_Aint displacements[2] = {offsetof(data_send, p), offsetof(data_send, value)};
+    MPI_Datatype types[2] = {MPI_INT, MPI_DOUBLE};
+
+    MPI_Type_create_struct(2, lengths, displacements, types, &data_send_type);
+    MPI_Type_commit(&data_send_type);
+    return data_send_type;
+}
 
 #if defined(P3_MICROPHY)
 extern "C" {
@@ -49,10 +63,17 @@ extern "C" {
         double* , double*, double*, double*, double*, size_t model_name_len
     );
 }
-
 #endif
 
+void output_forcing(std::string dir, int n, double q[6][NX][NY]);
 int main(int argc, char **argv) {
+    MPI_Init(&argc, &argv);
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    MPI_Datatype data_send_type = create_data_send_type();
+
     // This heating weight follows the Q1 heating profile for the data in 2DVVM/input/init.txt
     // Couple 12 km
     double heating_weight[62] = {
@@ -66,14 +87,19 @@ int main(int argc, char **argv) {
         0.
     };
 
-    omp_set_num_threads(128);
     Eigen::setNbThreads(1);
+    
+    // Declare CSSWM
+    CSSWM *model_csswm = nullptr;
+    if (rank == MASTER_RANK) model_csswm = new CSSWM();
 
     // Read configuration file
     std::map<std::string, std::string> config = read_config("../config.txt");
-    std::cout << "Configuration key-value pairs:" << std::endl;
-    for (const auto& pair : config) {
-        std::cout << pair.first << " = " << pair.second << std::endl;
+    if (rank == MASTER_RANK) {
+        std::cout << "Configuration key-value pairs:" << std::endl;
+        for (const auto& pair : config) {
+            std::cout << pair.first << " = " << pair.second << std::endl;
+        }
     }
 
     std::string path = config["OUTPUTPATH"] + "/";
@@ -102,227 +128,222 @@ int main(int argc, char **argv) {
     int vvm_outputstep = std::stoi(config["VVM_OUTPUTSTEP"]);
     double vvm_moisture_nudge_time = std::stod(config["VVM_MOISTURE_NUDGE_TIME"]);
 
-    printf("vvm_moisutre_nudge_time: %f\n", vvm_moisture_nudge_time);
 
-    model_csswm.output_path = path + "csswm/";
-    model_csswm.gravity = csswm_gravity;
-    model_csswm.dt = csswm_dt;
-    model_csswm.timeend = csswm_timeend;
-    model_csswm.outputstep = csswm_outputstep;
-    model_csswm.diffusion_kx = csswm_diffusion_kx;
-    model_csswm.diffusion_ky = csswm_diffusion_ky;
-    model_csswm.diffusion_ts = csswm_diffusion_ts;
-    model_csswm.addforcingtime = csswm_addforcingtime;
-    model_csswm.csswm_h_nudge_time = csswm_h_nudge_time;
+    if (rank == MASTER_RANK) {
+        model_csswm->output_path = path + "csswm/";
+        model_csswm->gravity = csswm_gravity;
+        model_csswm->dt = csswm_dt;
+        model_csswm->timeend = csswm_timeend;
+        model_csswm->outputstep = csswm_outputstep;
+        model_csswm->diffusion_kx = csswm_diffusion_kx;
+        model_csswm->diffusion_ky = csswm_diffusion_ky;
+        model_csswm->diffusion_ts = csswm_diffusion_ts;
+        model_csswm->addforcingtime = csswm_addforcingtime;
+        model_csswm->csswm_h_nudge_time = csswm_h_nudge_time;
+        
+    }
+
+    std::vector<vvm_index> vvms_index;
+    for (const auto& bubble : Bubbles_p_i_j) {
+        vvms_index.push_back(bubble);
+    }
+    for (const auto& notbubble : NotBubbles_p_i_j) {
+        vvms_index.push_back(notbubble);
+    }
+    int total_vvm_size = vvms_index.size();
+
+    // Distribute work
+    int tasks_per_core = total_vvm_size / size;
+    int extra_tasks = total_vvm_size % size;
+    int start = rank * tasks_per_core + (rank < extra_tasks ? rank : extra_tasks);
+    int end = start + tasks_per_core + (rank < extra_tasks ? 1 : 0) - 1;
+    if (end >= total_vvm_size) end = total_vvm_size - 1;
+
+    // Gather/scatter setup
+    int* gather_counts = new int[size];
+    int* displs_gather = new int[size];
+    int* scatter_counts = new int[size];
+    int* displs_scatter = new int[size];
     
-    printf("output path: %s\n", path.c_str());
-    printf("seed: %d\n", seed);
-    printf("Coupling time: %f\n", Couple_time);
-    printf("Gravity wave speed: %f\n", model_csswm.gravity);
-    // Display the parsed tuples
-    for (const vvm_index& tuple : Bubbles_p_i_j) {
-        printf("Bubble: p=%d, i=%d, j=%d\n", tuple.p, tuple.i, tuple.j);
+    for (int i = 0; i < size; i++) {
+        gather_counts[i] = scatter_counts[i] = (i < extra_tasks) ? tasks_per_core + 1 : tasks_per_core;
+        displs_gather[i] = (i == 0) ? 0 : displs_gather[i-1] + gather_counts[i-1];
+        displs_scatter[i] = (i == 0) ? 0 : displs_scatter[i-1] + scatter_counts[i-1];
     }
-    for (const vvm_index& tuple : NotBubbles_p_i_j) {
-        printf("Not Bubble: p=%d, i=%d, j=%d\n", tuple.p, tuple.i, tuple.j);
+
+    data_send* scattered_data = new data_send[total_vvm_size];
+    data_send* received_data = new data_send[scatter_counts[rank]];
+
+    // Master initializes CSSWM
+    if (rank == MASTER_RANK) {
+        CSSWM::Init::Init2d(*model_csswm);
+        CSSWM::Outputs::create_all_directory(*model_csswm);
+        CSSWM::Outputs::create_directory(model_csswm->output_path + "Q_all/");
+        CSSWM::Outputs::create_directory(model_csswm->output_path + "q_all/");
+        #ifdef NCOUTPUT
+            CSSWM::Outputs::grid_nc(*model_csswm);
+        #endif
+        #ifdef TXTOUTPUT
+            CSSWM::Outputs::grid(model_csswm);
+        #endif
     }
-    printf("vvm_dt: %f s\n", vvm_dt);
-    printf("vvm_dx: %f m\n", vvm_dx);
-    printf("vvm_dz: %f m\n", vvm_dz);
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    CSSWM::Init::Init2d(model_csswm);
+    // Local vvm declaration
+    int local_size = end - start + 1;
+    Config_VVM **config_vvms = new Config_VVM*[local_size];
+    vvm** local_vvms = new vvm*[local_size];
 
-    Config_VVM**** config_vvms = allocate_and_initialize_config(6, NX, NY);
+    // Local VVM initialization
     std::string path_vvm;
-
-    // Make configurations for all VVMs
-    for (int p = 0; p < 6; p++) {
-        for (int i = 0; i < NX; i++) {
-            for (int j = 0; j < NY; j++) {
-                path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
-                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
-            }
-        }
-    }
-    // Change some configurations for Bubbles
-    for (auto Bubble : Bubbles_p_i_j) {
-        path_vvm = path + "vvm/" + std::to_string(Bubble.p) + "_" + std::to_string(Bubble.i) + "_" + std::to_string(Bubble.j) + "/";
-        config_vvms[Bubble.p][Bubble.i][Bubble.j] =  new Config_VVM(createConfig(path_vvm, 1, Bubble_case, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
-    }
-    printf("Configurations are set.\n");
-
-    int total_size = Bubbles_p_i_j.size() + NotBubbles_p_i_j.size();
-    vvm_index vvms_index[total_size];
-    int count = 0;
-    for (int size = 0; size < (int) Bubbles_p_i_j.size(); size++) {
-        vvms_index[count] = Bubbles_p_i_j[size];
-        count++;
-    }
-    for (int size = 0; size < (int) NotBubbles_p_i_j.size(); size++) {
-        vvms_index[count] = NotBubbles_p_i_j[size];
-        count++;
-    }
-    printf("count: %d\n", count);
-    if (count != total_size) {
-        printf("Error: count != total_size\n");
-        return 1;
-    }
-
-    for (int size = 0; size < total_size; size++) {
-        printf("p: %d, i: %d, j: %d\n", vvms_index[size].p, vvms_index[size].i, vvms_index[size].j);
-    }
+    int vvm_nx = 0, vvm_nz = 0;
     
-    vvm**** vvms = allocate_and_initialize(6, NX, NY);
-    #ifdef _OPENMP
-    #pragma omp parallel for
-    #endif
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
-        vvms[p][i][j] = new vvm(*config_vvms[p][i][j]);
-    }
-    #ifdef _OPENMP
-    #pragma omp barrier
-    #endif
-    printf("VVMs are declared.\n");
+    for (int v = start; v <= end; v++) {
+        vvm_index current_index = vvms_index[v];
+        int p = vvms_index[v].p;
+        int i = vvms_index[v].i;
+        int j = vvms_index[v].j;
+        int local_v = v - start;
 
-    #ifdef _OPENMP
-    #pragma omp parallel for
-    #endif
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
+        path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
+        bool is_bubble = std::find(Bubbles_p_i_j.begin(), Bubbles_p_i_j.end(), vvms_index[v]) != Bubbles_p_i_j.end();
+        
+        printf("Rank %d: Processing p=%d, i=%d, j=%d. Is bubble: %d\n", rank, p, i, j, is_bubble);
+        config_vvms[local_v] = new Config_VVM(createConfig(path_vvm, 10, 
+                                                is_bubble ? Bubble_case : 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, 
+                                                vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
+
+        local_vvms[local_v] = new vvm(*config_vvms[local_v]);
+
+
         #if defined(LOADFROMPREVIOUSFILE)
             vvm::Init::LoadFromPreviousFile(*vvms[p][i][j]);
         #elif defined(LOAD2DINIT)
             vvm::Init::Load2DInit(*vvms[p][i][j]);
         #else
-            vvm::Init::Init1d(*vvms[p][i][j]);
-            vvm::Init::Init2d(*vvms[p][i][j]);
+            vvm::Init::Init1d(*local_vvms[local_v]);
+            vvm::Init::Init2d(*local_vvms[local_v]);
             #ifndef PETSC
-                vvm::PoissonSolver::InitPoissonMatrix(*vvms[p][i][j]);
+                vvm::PoissonSolver::InitPoissonMatrix(*local_vvms[local_v]);
             #endif
         #endif
+        vvm::Output::create_all_directory(*local_vvms[local_v]);
+        vvm::Output::create_directory(path + "vvm/q_all/");
+
+        vvm_nx = local_vvms[local_v]->nx;
+        vvm_nz = local_vvms[local_v]->nz;
     }
-    #ifdef _OPENMP
-    #pragma omp barrier
-    #endif
-    printf("VVMs are initialized.\n");
+    MPI_Barrier(MPI_COMM_WORLD);
+    printf("Rank: %d. Configurations are set and VVMs are declared and initialized.\n", rank);
 
-    double temp_csswm = csswm_timeend / csswm_dt, temp_vvm = vvm_timeend / vvm_dt;
-    int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
-    CSSWM::Outputs::create_all_directory(model_csswm);
-    // create Q_all directory
-    CSSWM::Outputs::create_directory(model_csswm.output_path + (std::string) "Q_all/");
-    CSSWM::Outputs::create_directory(model_csswm.output_path + (std::string) "q_all/");
 
-    #ifdef _OPENMP
-    #pragma omp parallel for
-    #endif
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
-        vvm::Output::create_all_directory(*vvms[p][i][j]);
-    }
-    #ifdef _OPENMP
-    #pragma omp barrier
-    #endif
-    vvm::Output::create_directory(path + "vvm/q_all/");
-
-    #ifdef NCOUTPUT
-        CSSWM::Outputs::grid_nc(model_csswm);
-    #endif
-    #ifdef TXTOUTPUT
-        CSSWM::Outputs::grid(model_csswm);
-    #endif
-
+    // TODO: Flexible ctl output
     // Copy grads ctl file to the output directory
-    std::string src1 = "../CSSWM/scripts/csswm.ctl";
-    std::string des1 = model_csswm.output_path + "nc/csswm.ctl";
+    if (rank == MASTER_RANK) {
+        std::string src1 = "../CSSWM/scripts/csswm.ctl";
+        std::string des1 = model_csswm->output_path + "nc/csswm.ctl";
 
-    // Construct the command
-    std::string cmd1 = "cp " + src1 + " " + des1;
-
-    // Execute the command
-    system(cmd1.c_str());
+        // Construct the command
+        std::string cmd1 = "cp " + src1 + " " + des1;
+        
+        // Execute the command
+        system(cmd1.c_str());
+    }
 
     std::string src2 = "../2DVVM/scripts/vvm.ctl";
     std::string des2;
     std::string cmd2;
 
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
-        des2 = vvms[p][i][j]->outputpath + "nc/vvm.ctl";
+    for (int v = start; v <= end; v++) {
+        int local_v = v - start;
+        des2 = local_vvms[local_v]->outputpath + "nc/vvm.ctl";        
         cmd2 = "cp " + src2 + " " + des2;
         system(cmd2.c_str());
     }
 
-
-    int vvm_nx = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nx;
-    int vvm_nz = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->nz;
-
+    double th_mean = 0.;
     double exchange_coeff = 0.;
     double coupling_vvm_param = 1.;
+    int k_couple = -9999;
+    k_couple = 12000. / local_vvms[0]->dz;
+    double (*th_mean_all)[NX][NY] = nullptr;
+    double (*Q_all)[NX][NY] = nullptr;
+    double (*q_all)[NX][NY] = nullptr;
+    if (rank == MASTER_RANK) {
+        th_mean_all = new double[6][NX][NY]();
+        Q_all = new double[6][NX][NY]();
+        q_all = new double[6][NX][NY]();
+    }
 
-    double th_mean = 0.;
-    double th_mean_all[6][NX][NY];
-    #if defined(AB2_Couple)
-        double Q_all[2][6][NX][NY];
-        double q_all[2][6][NX][NY];
-    #else
-        double Q_all[6][NX][NY];
-        double q_all[6][NX][NY];
-    #endif
+    // Calculate initial forcing and tune the profile according to the exchange coefficient.
+    data_send* initial_send_data = new data_send[local_size];
+    for (int v = start; v <= end; v++) {
+        int local_v = v - start;
+        int p = vvms_index[v].p;
+        int i = vvms_index[v].i;
+        int j = vvms_index[v].j;
 
-    int k_couple = vvm_nx - 2;
-    #if defined(Couple_10km)
-        k_couple = 10000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
-    #elif defined(Couple_12km)
-        k_couple = 12000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
-    #else
-        k_couple = vvm_nz - 2;
-    #endif
-
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
-
-        printf("p: %d, i: %d, j: %d\n", p, i, j);
-        
-        th_mean_all[p][i][j] = 0.;
+        double th_mean = 0.;
         for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
             for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                th_mean_all[p][i][j] += vvms[p][i][j]->th[i_vvm][k_vvm];
+                th_mean += local_vvms[local_v]->th[i_vvm][k_vvm];
             }
         }
-        th_mean_all[p][i][j] /= ((vvm_nx-2) * k_couple);
+        th_mean /= ((vvm_nx-2) * k_couple);
+        initial_send_data[local_v] = {p, i, j, th_mean};
     }
-    exchange_coeff = model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j] / th_mean_all[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j];
+    data_send* initial_gathered_data = (rank == MASTER_RANK) ? new data_send[total_vvm_size] : nullptr;
+    MPI_Gatherv(initial_send_data, end-start+1, data_send_type,
+                initial_gathered_data, gather_counts, displs_gather, data_send_type,
+                MASTER_RANK, MPI_COMM_WORLD);
 
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
 
-        double total_heating = (model_csswm.csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) * (vvm_nz-2);
+    if (rank == MASTER_RANK) {
+        for (int count = 0; count < total_vvm_size; count++) {
+            int p = initial_gathered_data[count].p;
+            int i = initial_gathered_data[count].i;
+            int j = initial_gathered_data[count].j;
+            th_mean_all[p][i][j] = initial_gathered_data[count].value;
+        }
 
-        for (int k_vvm = 1; k_vvm <= vvm_nz-2; k_vvm++) {
+        // Initial adjustment using th_mean_all
+        exchange_coeff = model_csswm->csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j] / 
+                        th_mean_all[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j];
+
+        for (int v = 0; v < total_vvm_size; v++) {
+            int p = vvms_index[v].p;
+            int i = vvms_index[v].i;
+            int j = vvms_index[v].j;
+            double total_heating = (model_csswm->csswm[p].h[i][j] / exchange_coeff - th_mean_all[p][i][j]) * (vvm_nz-2);
+            scattered_data[v] = {p, i, j, total_heating};
+        }
+        delete[] initial_gathered_data;
+    }
+    delete[] initial_send_data;
+
+
+    MPI_Scatterv(scattered_data, scatter_counts, displs_scatter, data_send_type,
+                 received_data, scatter_counts[rank], data_send_type,
+                 MASTER_RANK, MPI_COMM_WORLD);
+    
+    // Broadcast the exchange coefficient to all ranks
+    MPI_Bcast(&exchange_coeff, 1, MPI_DOUBLE, MASTER_RANK, MPI_COMM_WORLD);
+    std::cout << "exchange_coeff" << exchange_coeff << std::endl;
+
+    // Apply initial heating
+    for (int v = start; v <= end; v++) {
+        int local_v = v - start;
+
+        double total_heating = received_data[local_v].value;
+        for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
             double heating = total_heating * heating_weight[k_vvm];
             for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                vvms[p][i][j]->th[i_vvm][k_vvm] += heating;
-                vvms[p][i][j]->thm[i_vvm][k_vvm] = vvms[p][i][j]->th[i_vvm][k_vvm];
+                local_vvms[local_v]->th[i_vvm][k_vvm] += heating;
+                local_vvms[local_v]->thm[i_vvm][k_vvm] = local_vvms[local_v]->th[i_vvm][k_vvm];
             }
-        }   
+        }
     }
-
-
     // p3 initialization
     #if defined(P3_MICROPHY)
 
@@ -332,261 +353,230 @@ int main(int argc, char **argv) {
         vvm::P3::model_name, &vvm::P3::stat, &vvm::P3::abort_on_err, &vvm::P3::dowr, strlen(vvm::P3::lookup_file_dir), strlen(vvm::P3::model_name)
     );
 
-    for (int size = 0; size < total_size; size++) {
-        int p = vvms_index[size].p;
-        int i = vvms_index[size].i;
-        int j = vvms_index[size].j;
+    for (int v = start; v <= end; v++) {
+        int local_v = v - start;
         for (int k_vvm = 0; k_vvm <= vvm_nz-1; k_vvm++) {
             for (int i_vvm = 0; i_vvm <= vvm_nx-1; i_vvm++) {
-                vvms[p][i][j]->dz_all[i_vvm][k_vvm] = vvms[p][i][j]->dz;
-                vvms[p][i][j]->w_all[i_vvm][k_vvm] = 0.;
-                vvms[p][i][j]->pb_all[i_vvm][k_vvm] = vvms[p][i][j]->pb[k_vvm];
-                vvms[p][i][j]->zi_all[i_vvm][k_vvm] = 0.;
-                vvms[p][i][j]->ssat_all[i_vvm][k_vvm] = 0.;
+                local_vvms[local_v]->dz_all[i_vvm][k_vvm] = local_vvms[local_v]->dz;
+                local_vvms[local_v]->w_all[i_vvm][k_vvm] = 0.;
+                local_vvms[local_v]->pb_all[i_vvm][k_vvm] = local_vvms[local_v]->pb[k_vvm];
+                local_vvms[local_v]->zi_all[i_vvm][k_vvm] = 0.;
+                local_vvms[local_v]->ssat_all[i_vvm][k_vvm] = 0.;
             }
         }
         for (int k_vvm = 0; k_vvm < vvm_nz; k_vvm++) {
             for (int i_vvm = 0; i_vvm < vvm_nx; i_vvm++) {
-                vvms[p][i][j]->qiliqp[i_vvm][k_vvm] = 0.;
+                local_vvms[local_v]->qiliqp[i_vvm][k_vvm] = 0.;
             }
         }
     }
     int one = 1;
     #endif
-    // initialize Q_all, q_all
-    #ifdef _OPENMP
-    #pragma omp parallel for collapse(3)
-    #endif
-    for (int p = 0; p < 6; p++) {
-        for (int i = 0; i < NX; i++) {
-            for (int j = 0; j < NY; j++) {
-                th_mean_all[p][i][j] = 0.;
-                #if defined(AB2_Couple)
-                    Q_all[0][p][i][j] = Q_all[1][p][i][j] = 0.;
-                    q_all[0][p][i][j] = q_all[1][p][i][j] = 0.;
-                #else
-                    Q_all[p][i][j] = 0.;
-                    q_all[p][i][j] = 0.;
-                #endif
-            }
-        }
-    }
-    #ifdef _OPENMP
-    #pragma omp barrier
-    #endif
+    MPI_Barrier(MPI_COMM_WORLD);
 
     double next_coupling_time = Couple_time;
-    while (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step < nmax_vvm && model_csswm.step < nmax_csswm) {
+    int n_csswm = 0;
+    double temp_csswm = csswm_timeend / csswm_dt, temp_vvm = vvm_timeend / vvm_dt;
+    int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
-        double time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
-        double time_csswm = model_csswm.step * DT;
+    while (true) {
+        // Compute loop condition on all ranks for VVM and on master for CSSWM
+        int vvm_continue = (local_vvms[0]->step < nmax_vvm);
+        int csswm_continue = 1;
+        if (rank == MASTER_RANK) csswm_continue = (model_csswm->step < nmax_csswm);
+        MPI_Bcast(&csswm_continue, 1, MPI_INT, MASTER_RANK, MPI_COMM_WORLD);
+        if (!vvm_continue || !csswm_continue) break;
 
-        if (model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j] != model_csswm.csswm[NotBubbles_p_i_j[0].p].h[NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]) {
-            printf("Nan\n");
-            return 1;
-        }
+        double time_vvm = local_vvms[0]->step * local_vvms[0]->dt;
+        double time_csswm = (rank == MASTER_RANK) ? model_csswm->step * DT : 0.0;
 
-        while (next_coupling_time != time_csswm) {
-            printf("csswm_step: %d, csswm_time: %f\n", model_csswm.step, time_csswm);
-
-            // Output for CSSWM
-            if (model_csswm.step % model_csswm.outputstep == 0 || model_csswm.step == model_csswm.timeend-1 || model_csswm.step == model_csswm.timeend-2) {
-                #ifdef NCOUTPUT
-                    CSSWM::Outputs::huv_nc(model_csswm.step, model_csswm);
-                #endif
-            }
-
-            #if defined(EquatorialWave)
-                if (model_csswm.step * model_csswm.dt >= model_csswm.addforcingtime) model_csswm.status_add_forcing = false;
-                else model_csswm.status_add_forcing = true;
-            #endif
-
-            // Prediction for CSSWM
-            CSSWM::Iteration::ph_pt_4(model_csswm);
-            CSSWM::Iteration::pu_pt_4(model_csswm);
-            CSSWM::Iteration::pv_pt_4(model_csswm);
-
-            CSSWM::BP_h(model_csswm);
-            model_csswm.BP_wind_interpolation2(model_csswm);
-
-            #if defined(DIFFUSION)
-                CSSWM::NumericalProcess::DiffusionAll(model_csswm);
-            #endif
-
-            model_csswm.BP_h(model_csswm);
-            model_csswm.BP_wind_interpolation2(model_csswm);
-            
-            #if defined(TIMEFILTER) && !defined(AB2Time)
-                CSSWM::NumericalProcess::timeFilterAll(model_csswm);
-            #endif
-
-            if (model_csswm.csswm_h_nudge_time != 0) {
-                CSSWM::NumericalProcess::NudgeH(model_csswm);
-            }
-
-            CSSWM::Iteration::nextTimeStep(model_csswm);
-            model_csswm.step++;
-            time_csswm = model_csswm.step * DT;
-        }
-        #ifdef _OPENMP
-        #pragma omp barrier
-        #endif
-
-        // Get th_mean at time step n, which is before the iteration for CRM
-        #ifdef _OPENMP
-        #pragma omp parallel for
-        #endif
-        for (int size = 0; size < total_size; size++) {
-            int p = vvms_index[size].p;
-            int i = vvms_index[size].i;
-            int j = vvms_index[size].j;
-
-            th_mean = 0.;
-            for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
-                for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                    th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
+        if (rank == MASTER_RANK) {
+            while (next_coupling_time != time_csswm) {
+                printf("csswm_step: %d, csswm_time: %f\n", model_csswm->step, time_csswm);
+                if (model_csswm->step % model_csswm->outputstep == 0 || 
+                    model_csswm->step == model_csswm->timeend-1 || 
+                    model_csswm->step == model_csswm->timeend-2) {
+                    #ifdef NCOUTPUT
+                        CSSWM::Outputs::huv_nc(model_csswm->step, *model_csswm);
+                    #endif
                 }
-            }
-            th_mean /= ((vvm_nx-2) * k_couple);
-            th_mean_all[p][i][j] = th_mean;
 
-            #if defined(AB2_Couple)
-                q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / Couple_time;
-                Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / Couple_time;
-            #else
-                q_all[p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / Couple_time;
-                // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / Couple_time;
-            #endif
+                #if defined(EquatorialWave)
+                    if (model_csswm.step * model_csswm.dt >= model_csswm.addforcingtime) model_csswm.status_add_forcing = false;
+                    else model_csswm.status_add_forcing = true;
+                #endif
+
+                // Prediction for CSSWM
+                CSSWM::Iteration::ph_pt_4(*model_csswm);
+                CSSWM::Iteration::pu_pt_4(*model_csswm);
+                CSSWM::Iteration::pv_pt_4(*model_csswm);
+
+                CSSWM::BP_h(*model_csswm);
+                model_csswm->BP_wind_interpolation2(*model_csswm);
+
+                #if defined(DIFFUSION)
+                    CSSWM::NumericalProcess::DiffusionAll(*model_csswm);
+                #endif
+
+                model_csswm->BP_h(*model_csswm);
+                model_csswm->BP_wind_interpolation2(*model_csswm);
+                
+                #if defined(TIMEFILTER) && !defined(AB2Time)
+                    CSSWM::NumericalProcess::timeFilterAll(*model_csswm);
+                #endif
+
+                if (model_csswm->csswm_h_nudge_time != 0) {
+                    CSSWM::NumericalProcess::NudgeH(*model_csswm);
+                }
+
+                CSSWM::Iteration::nextTimeStep(*model_csswm);
+                model_csswm->step++;
+                time_csswm = model_csswm->step * DT;
+            }
         }
         #ifdef _OPENMP
         #pragma omp barrier
         #endif
+        MPI_Barrier(MPI_COMM_WORLD);
 
-        output_forcing(model_csswm.output_path + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
+        // Master updates th_mean_all and computes forcing
+        if (rank == MASTER_RANK) {
+            for (int i = 0; i < total_vvm_size; i++) {
+                int p = vvms_index[i].p;
+                int x = vvms_index[i].i;
+                int y = vvms_index[i].j;
+                q_all[p][x][y] = (model_csswm->csswm[p].hp[x][y] / exchange_coeff - th_mean_all[p][x][y]) / Couple_time;
+                // Q_all[p][x][y] = (exchange_coeff * th_mean_all[p][x][y] - model_csswm->csswm[p].h[x][y]) / Couple_time;
+            }
+            output_forcing(model_csswm->output_path + "q_all/", (int)next_coupling_time / Couple_time, q_all);
+            // output_forcing(model_csswm->output_path + "Q_all/", (int)next_coupling_time / Couple_time, Q_all, rank);
+
+            for (int i = 0; i < total_vvm_size; i++) {
+                scattered_data[i] = {vvms_index[i].p, vvms_index[i].i, vvms_index[i].j, q_all[vvms_index[i].p][vvms_index[i].i][vvms_index[i].j]};
+            }
+        }
+
+        MPI_Scatterv(scattered_data, scatter_counts, displs_scatter, data_send_type,
+                     received_data, scatter_counts[rank], data_send_type,
+                     MASTER_RANK, MPI_COMM_WORLD);
+
 
         while (time_vvm < next_coupling_time) {
-            printf("VVM step: %d, time: %f\n", vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step, time_vvm);
+            printf("VVM step: %d, time: %f\n", local_vvms[0]->step, time_vvm);
             
-            #ifdef _OPENMP
-            #pragma omp parallel for
-            #endif
-            for (int size = 0; size < total_size; size++) {
-                int p = vvms_index[size].p;
-                int i = vvms_index[size].i;
-                int j = vvms_index[size].j;
+            for (int v = start; v <= end; v++) {
+                int p = vvms_index[v].p;
+                int i = vvms_index[v].i;
+                int j = vvms_index[v].j;
+                int local_v = v - start;
 
-                if (vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step % vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->OUTPUTSTEP == 0) {
+                if (local_vvms[local_v]->step % local_vvms[local_v]->OUTPUTSTEP == 0) {
                     #if defined(OUTPUTTXT)
                         vvm::Output::outputalltxt(vvms[p][i][j]->step, *vvms[p][i][j]);
                     #endif
-
-                    #pragma omp critical
-                    {
-                        #if defined(OUTPUTNC)
-                            vvm::Output::output_nc(vvms[p][i][j]->step, *vvms[p][i][j]);
-                        #endif
-                    }
+                    #if defined(OUTPUTNC)
+                        vvm::Output::output_nc(local_vvms[local_v]->step, *local_vvms[local_v]);
+                    #endif
                 }
 
-                vvm::Iteration::pzeta_pt(*vvms[p][i][j]);
-                vvm::Iteration::pth_pt(*vvms[p][i][j]);
+                vvm::Iteration::pzeta_pt(*local_vvms[local_v]);
+                vvm::Iteration::pth_pt(*local_vvms[local_v]);
                 #if defined(WATER)
                     #if defined(KESSLER_MICROPHY)
-                        vvm::Iteration::pqv_pt(*vvms[p][i][j]);
-                        vvm::Iteration::pqc_pt(*vvms[p][i][j]);
-                        vvm::Iteration::pqr_pt(*vvms[p][i][j]);
+                        vvm::Iteration::pqv_pt(*local_vvms[local_v]);
+                        vvm::Iteration::pqc_pt(*local_vvms[local_v]);
+                        vvm::Iteration::pqr_pt(*local_vvms[local_v]);
                     #endif
 
                     #if defined(P3_MICROPHY)
-                        vvm::Iteration::pqmicrophy_pt(*vvms[p][i][j]);
+                        vvm::Iteration::pqmicrophy_pt(*local_vvms[local_v]);
                     #endif
 
-                    if (vvms[p][i][j]->step * vvms[p][i][j]->dt <= vvms[p][i][j]->addforcingtime) vvms[p][i][j]->status_for_adding_forcing = true;
-                    else vvms[p][i][j]->status_for_adding_forcing = false;
+                    if (local_vvms[local_v]->step * local_vvms[local_v]->dt <= local_vvms[local_v]->addforcingtime) local_vvms[local_v]->status_for_adding_forcing = true;
+                    else local_vvms[local_v]->status_for_adding_forcing = false;
 
-                    // Generate new random th perturbation for tropical forcing case
-                    if (vvms[p][i][j]->status_for_adding_forcing == true) {
-                        if (is_value_in_vvm_index(Bubbles_p_i_j, p, i, j)) {
+
+                    if (local_vvms[local_v]->status_for_adding_forcing) {
+                        if (std::find(Bubbles_p_i_j.begin(), Bubbles_p_i_j.end(), vvms_index[v]) != Bubbles_p_i_j.end()) {
                             // Add random perturbation for Bubble case with a random seed
-                            vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step+seed, -0.001, 0.001, 1.);
-                        }
-                        else {
+                            vvm::Init::RandomPerturbation(*local_vvms[local_v], local_vvms[local_v]->step + seed, -0.001, 0.001, 1.);
+                        } else {
                             // Add random perturbation for Not Bubble case with the same random seed
-                            vvm::Init::RandomPerturbation(*vvms[p][i][j], vvms[p][i][j]->step);
+                            vvm::Init::RandomPerturbation(*local_vvms[local_v], local_vvms[local_v]->step);
                         }
                     }
-                    vvm::AddForcing(*vvms[p][i][j]);
+                    vvm::AddForcing(*local_vvms[local_v]);
                 #endif
-                vvm::BoundaryProcess2D_all(*vvms[p][i][j]);
 
-                vvm::PoissonSolver::pubarTop_pt(*vvms[p][i][j]);
-                vvm::PoissonSolver::cal_w(*vvms[p][i][j], p, i, j);
-                vvm::PoissonSolver::cal_u(*vvms[p][i][j]);
-                
-                vvm::Iteration::updateMean(*vvms[p][i][j]);
+                vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
+
+                vvm::PoissonSolver::pubarTop_pt(*local_vvms[local_v]);
+                vvm::PoissonSolver::cal_w(*local_vvms[local_v], p, i, j);
+                vvm::PoissonSolver::cal_u(*local_vvms[local_v]);
+
+                vvm::Iteration::updateMean(*local_vvms[local_v]);
+
                 #if defined(DIFFUSION_VVM)
                     if (time_vvm == 0) std::cout << "Constant Diffusion" << std::endl;
-                    vvm::NumericalProcess::DiffusionAll(*vvms[p][i][j]);
+                    vvm::NumericalProcess::DiffusionAll(*local_vvms[local_v]);
                 #else
-                    vvm::Turbulence::RKM_RKH(*vvms[p][i][j]);
+                    vvm::Turbulence::RKM_RKH(*local_vvms[local_v]);
                 #endif
-                vvm::NumericalProcess::Nudge_theta(*vvms[p][i][j]);
-                if (vvms[p][i][j]->CASE != 2) vvm::NumericalProcess::Nudge_zeta(*vvms[p][i][j]);
-                if (vvm_moisture_nudge_time != 0 && vvms[p][i][j]->CASE == 1) vvm::NumericalProcess::Nudge_qv(*vvms[p][i][j]);
 
+                vvm::NumericalProcess::Nudge_theta(*local_vvms[local_v]);
+                if (local_vvms[local_v]->CASE != 2) vvm::NumericalProcess::Nudge_zeta(*local_vvms[local_v]);
+                if (vvm_moisture_nudge_time != 0 && local_vvms[local_v]->CASE == 1) vvm::NumericalProcess::Nudge_qv(*local_vvms[local_v]);
 
                 #if defined(WATER)
                     #if defined(KESSLER_MICROPHY)
-                        vvm::MicroPhysics::autoconversion(*vvms[p][i][j]);
-                        vvm::MicroPhysics::accretion(*vvms[p][i][j]);
-                        vvm::MicroPhysics::evaporation(*vvms[p][i][j]);
-                        vvm::MicroPhysics::condensation(*vvms[p][i][j]); // saturation adjustment
-
-                        // It is supposed to not have negative values. But due to numerical process, it might produce some teeny-tiny values.
-                        vvm::MicroPhysics::NegativeValueProcess(vvms[p][i][j]->qvp, vvms[p][i][j]->nx, vvms[p][i][j]->nz);
-                        vvm::MicroPhysics::NegativeValueProcess(vvms[p][i][j]->qcp, vvms[p][i][j]->nx, vvms[p][i][j]->nz);
-                        vvm::MicroPhysics::NegativeValueProcess(vvms[p][i][j]->qrp, vvms[p][i][j]->nx, vvms[p][i][j]->nz);
+                        vvm::MicroPhysics::autoconversion(*local_vvms[local_v]);
+                        vvm::MicroPhysics::accretion(*local_vvms[local_v]);
+                        vvm::MicroPhysics::evaporation(*local_vvms[local_v]);
+                        vvm::MicroPhysics::condensation(*local_vvms[local_v]);
+                        vvm::MicroPhysics::NegativeValueProcess(local_vvms[local_v]->qvp, local_vvms[local_v]->nx, local_vvms[local_v]->nz);
+                        vvm::MicroPhysics::NegativeValueProcess(local_vvms[local_v]->qcp, local_vvms[local_v]->nx, local_vvms[local_v]->nz);
+                        vvm::MicroPhysics::NegativeValueProcess(local_vvms[local_v]->qrp, local_vvms[local_v]->nx, local_vvms[local_v]->nz);
                     #endif
 
                     #if defined(P3_MICROPHY)
 
                     for (int i_vvm = 1; i_vvm < vvm_nx-1; i_vvm++) {
-                        double *qcp1d = vvms[p][i][j]->qcp[i_vvm];
-                        double *ncp1d = vvms[p][i][j]->ncp[i_vvm];
-                        double *qrp1d = vvms[p][i][j]->qrp[i_vvm];
-                        double *nrp1d = vvms[p][i][j]->nrp[i_vvm];
-                        double *th1d = vvms[p][i][j]->th[i_vvm];
-                        double *thp1d = vvms[p][i][j]->thp[i_vvm];
-                        double *qv1d = vvms[p][i][j]->qv[i_vvm];
-                        double *qvp1d = vvms[p][i][j]->qvp[i_vvm];
-                        double *qitotp1d = vvms[p][i][j]->qitotp[i_vvm];
-                        double *qirimp1d = vvms[p][i][j]->qirimp[i_vvm];
-                        double *qiliqp1d = vvms[p][i][j]->qiliqp[i_vvm];
-                        double *nip1d = vvms[p][i][j]->nip[i_vvm];
-                        double *birimp1d = vvms[p][i][j]->birimp[i_vvm];
-                        double *zi_all1d = vvms[p][i][j]->zi_all[i_vvm];
-                        double *ssat_all1d = vvms[p][i][j]->ssat_all[i_vvm];
-                        double *w_all1d = vvms[p][i][j]->w_all[i_vvm];
-                        double *pb_all1d = vvms[p][i][j]->pb_all[i_vvm];
-                        double *dz_all1d = vvms[p][i][j]->dz_all[i_vvm];
-                        double *precip_liq1d = &vvms[p][i][j]->precip_liq[i_vvm];
-                        double *precip_sol1d = &vvms[p][i][j]->precip_sol[i_vvm];
-                        double *diag_ze1d = vvms[p][i][j]->diag_ze[i_vvm];
-                        double *diag_effc1d = vvms[p][i][j]->diag_effc[i_vvm];
-                        double *diag_effi1d = vvms[p][i][j]->diag_effi[i_vvm];
-                        double *diag_vmi1d = vvms[p][i][j]->diag_vmi[i_vvm];
-                        double *diag_di1d = vvms[p][i][j]->diag_di[i_vvm];
-                        double *diag_rhoi1d = vvms[p][i][j]->diag_rhoi[i_vvm];
-                        double *diag_2d1d = vvms[p][i][j]->diag_2d[i_vvm];
-                        double *diag_3d1d = vvms[p][i][j]->diag_3d[i_vvm][0];
-                        double *cldfrac1d = vvms[p][i][j]->cldfrac[i_vvm];
+                        double *qcp1d = local_vvms[local_v]->qcp[i_vvm];
+                        double *ncp1d = local_vvms[local_v]->ncp[i_vvm];
+                        double *qrp1d = local_vvms[local_v]->qrp[i_vvm];
+                        double *nrp1d = local_vvms[local_v]->nrp[i_vvm];
+                        double *th1d = local_vvms[local_v]->th[i_vvm];
+                        double *thp1d = local_vvms[local_v]->thp[i_vvm];
+                        double *qv1d = local_vvms[local_v]->qv[i_vvm];
+                        double *qvp1d = local_vvms[local_v]->qvp[i_vvm];
+                        double *qitotp1d = local_vvms[local_v]->qitotp[i_vvm];
+                        double *qirimp1d = local_vvms[local_v]->qirimp[i_vvm];
+                        double *qiliqp1d = local_vvms[local_v]->qiliqp[i_vvm];
+                        double *nip1d = local_vvms[local_v]->nip[i_vvm];
+                        double *birimp1d = local_vvms[local_v]->birimp[i_vvm];
+                        double *zi_all1d = local_vvms[local_v]->zi_all[i_vvm];
+                        double *ssat_all1d = local_vvms[local_v]->ssat_all[i_vvm];
+                        double *w_all1d = local_vvms[local_v]->w_all[i_vvm];
+                        double *pb_all1d = local_vvms[local_v]->pb_all[i_vvm];
+                        double *dz_all1d = local_vvms[local_v]->dz_all[i_vvm];
+                        double *precip_liq1d = &local_vvms[local_v]->precip_liq[i_vvm];
+                        double *precip_sol1d = &local_vvms[local_v]->precip_sol[i_vvm];
+                        double *diag_ze1d = local_vvms[local_v]->diag_ze[i_vvm];
+                        double *diag_effc1d = local_vvms[local_v]->diag_effc[i_vvm];
+                        double *diag_effi1d = local_vvms[local_v]->diag_effi[i_vvm];
+                        double *diag_vmi1d = local_vvms[local_v]->diag_vmi[i_vvm];
+                        double *diag_di1d = local_vvms[local_v]->diag_di[i_vvm];
+                        double *diag_rhoi1d = local_vvms[local_v]->diag_rhoi[i_vvm];
+                        double *diag_2d1d = local_vvms[local_v]->diag_2d[i_vvm];
+                        double *diag_3d1d = local_vvms[local_v]->diag_3d[i_vvm][0];
+                        double *cldfrac1d = local_vvms[local_v]->cldfrac[i_vvm];
 
                         __microphy_p3_MOD_p3_main(
                             qcp1d, ncp1d, qrp1d, nrp1d, 
-                            th1d, thp1d, qv1d, qvp1d, &vvms[p][i][j]->dt,
+                            th1d, thp1d, qv1d, qvp1d, &local_vvms[local_v]->dt,
                             qitotp1d, qirimp1d, qiliqp1d, nip1d,
                             birimp1d, zi_all1d, ssat_all1d, w_all1d, pb_all1d,
-                            dz_all1d, &vvms[p][i][j]->step, precip_liq1d, precip_sol1d, &one, &one, &one, &vvm_nz, 
+                            dz_all1d, &local_vvms[local_v]->step, precip_liq1d, precip_sol1d, &one, &one, &one, &vvm_nz, 
                             &vvm::P3::nCat, diag_ze1d, diag_effc1d, diag_effi1d,
                             diag_vmi1d, diag_di1d, diag_rhoi1d, 
                             &vvm::P3::n_diag_2d, diag_2d1d, &vvm::P3::n_diag_3d, diag_3d1d,
@@ -598,97 +588,101 @@ int main(int argc, char **argv) {
                             nullptr, nullptr, nullptr, nullptr, nullptr,
                             nullptr, nullptr, nullptr, nullptr, nullptr, strlen(vvm::P3::model_name)
                         );
-                        vvms[p][i][j]->precip[i_vvm] = vvms[p][i][j]->precip_sol[i_vvm] + vvms[p][i][j]->precip_liq[i_vvm];
+                        local_vvms[local_v]->precip[i_vvm] = local_vvms[local_v]->precip_sol[i_vvm] + local_vvms[local_v]->precip_liq[i_vvm];
                     }
                     #endif
                 #endif
 
-                vvm::BoundaryProcess2D_all(*vvms[p][i][j]);
+                vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
 
                 #if defined(TIMEFILTER) && !defined(AB2)
-                    vvm::NumericalProcess::timeFilterAll(*vvms[p][i][j]);
+                    vvm::NumericalProcess::timeFilterAll(*local_vvms[local_v]);
                 #endif
 
-                // Large Scale Forcing
-                #if defined(PROFILE)
-                    #if defined(AB2_Couple)
-                        double total_heating1 = q_all[model_csswm.step%2][p][i][j] * k_couple;
-                        double total_heating2 = q_all[(model_csswm.step+1)%2][p][i][j] * k_couple;
-                        double heating1 = 0.;
-                        double heating2 = 0.;
-                    #else
-                        double total_heating = q_all[p][i][j] * k_couple;
-                        double heating = 0.;
-                    #endif
-                #endif
-
+                // Apply large-scale forcing from master
+                double total_heating = received_data[local_v].value / exchange_coeff;  // Use hp from scattered data
                 for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
-                    #if defined(PROFILE)
-                        #if defined(AB2_Couple)
-                            heating1 = total_heating1 * heating_weight[k_vvm];
-                            heating2 = total_heating2 * heating_weight[k_vvm];
-                        #else
-                            heating = total_heating * heating_weight[k_vvm];
-                        #endif
-                    #endif
+                    double heating = total_heating * heating_weight[k_vvm];
                     for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        #if defined(PROFILE)
-                            #if defined(AB2_Couple)
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
-                            #else
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
-                            #endif
-                        #else
-                            vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
-                        #endif
+                        local_vvms[local_v]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * local_vvms[local_v]->dt;
                     }
                 }
 
                 // VVM next step
-                vvm::Iteration::nextTimeStep(*vvms[p][i][j]);
-                vvms[p][i][j]->step++;
+                vvm::Iteration::nextTimeStep(*local_vvms[local_v]);
+                local_vvms[local_v]->step++;
             }
-            #ifdef _OPENMP
-            #pragma omp barrier
-            #endif
-            time_vvm = vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->step * vvms[vvms_index[0].p][vvms_index[0].i][vvms_index[0].j]->dt;
+            time_vvm = local_vvms[0]->step * local_vvms[0]->dt;
         }
 
-        // Next time step for CSSWM (the iteration is done after adding the small scale forcing)
-        #ifdef _OPENMP
-        #pragma omp parallel for 
-        #endif
-        for (int size = 0; size < total_size; size++) {
-            int p = vvms_index[size].p;
-            int i = vvms_index[size].i;
-            int j = vvms_index[size].j;
+        // Gather th_mean from workers after VVM steps
+        data_send* send_data = new data_send[local_size];
+        for (int v = start; v <= end; v++) {
+            int local_v = v - start;
+            int p = vvms_index[v].p;
+            int i = vvms_index[v].i;
+            int j = vvms_index[v].j;
 
             double th_mean = 0.;
             for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
                 for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                    th_mean += vvms[p][i][j]->th[i_vvm][k_vvm];
+                    th_mean += local_vvms[local_v]->th[i_vvm][k_vvm];
                 }
             }
             th_mean /= ((vvm_nx-2) * k_couple);
-
-            Q_all[p][i][j] = (th_mean * exchange_coeff - model_csswm.csswm[p].h[i][j]);
-            model_csswm.csswm[p].h[i][j] = th_mean * exchange_coeff;
-            
-            #if defined(AB2_Couple)
-                model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * DT;
-            #endif
+            send_data[local_v] = {p, i, j, th_mean};
         }
-        #ifdef _OPENMP
-        #pragma omp barrier
-        #endif
 
-        output_forcing(model_csswm.output_path + (std::string) "Q_all/", (int) next_coupling_time / Couple_time, Q_all);
+        data_send* gathered_data = (rank == MASTER_RANK) ? new data_send[total_vvm_size] : nullptr;
+        MPI_Gatherv(send_data, local_size, data_send_type,
+                    gathered_data, gather_counts, displs_gather, data_send_type,
+                    MASTER_RANK, MPI_COMM_WORLD);
+
+        // Update th_mean_all on master with latest VVM state
+        if (rank == MASTER_RANK) {
+            for (int i = 0; i < total_vvm_size; i++) {
+                int p = gathered_data[i].p;
+                int x = gathered_data[i].i;
+                int y = gathered_data[i].j;
+                th_mean_all[p][x][y] = gathered_data[i].value;
+            }
+        }
+
+        // Update CSSWM with new th_mean (master only)
+        if (rank == MASTER_RANK) {
+            for (int i = 0; i < total_vvm_size; i++) {
+                int p = vvms_index[i].p;
+                int x = vvms_index[i].i;
+                int y = vvms_index[i].j;
+                model_csswm->csswm[p].h[x][y] = th_mean_all[p][x][y] * exchange_coeff;
+            }
+        }
 
         next_coupling_time += Couple_time;
+        MPI_Barrier(MPI_COMM_WORLD);
     }
+    MPI_Barrier(MPI_COMM_WORLD);
 
-    deallocate_config(config_vvms, 6, NX, NY);
-    deallocate(vvms, 6, NX, NY);
+    // Cleanup
+    for (int v = 0; v < local_size; v++) {
+        delete local_vvms[v];
+        delete config_vvms[v];
+    }
+    delete[] local_vvms;
+    delete[] config_vvms;
+    delete[] gather_counts;
+    delete[] displs_gather;
+    delete[] scatter_counts;
+    delete[] displs_scatter;
+    delete[] scattered_data;
+    delete[] received_data;
+    if (rank == MASTER_RANK) {
+        delete[] th_mean_all;
+        delete[] Q_all;
+        delete[] q_all;
+    }
+    MPI_Type_free(&data_send_type);
+    MPI_Finalize();
     return 0;
 }
 

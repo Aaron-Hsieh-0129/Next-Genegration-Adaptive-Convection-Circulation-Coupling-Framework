@@ -1,4 +1,4 @@
-OUTPUTPATH=/data/Aaron/NextACC_p3/250313/10days_qv1.1_7200s_onlybubble_smallnudge_zeta_constdiff100_diffP3/
+OUTPUTPATH=/home/Aaron/TMIF_VVM_CSSWM/DATA/test/
 SEED=0                                          # random seed for initial perturbation in the CRM bottom
 COUPLETIME=600                                # Coupling time for NextGCC [s]
 Bubble_p_i_j=[(1,46,47),(1,47,47),(1,48,47)]          # CRMs with bubble inside
@@ -7,7 +7,7 @@ BubbleCase=1                                          # Case0: Nothing, Case1: B
 CSSWM_GRAVITY=0.4                        # gravity wave speed for CSSWM
 
 CSSWM_DT=200
-CSSWM_TIMEEND=864000                                   # Integration Time [s]
+CSSWM_TIMEEND=3000                                   # Integration Time [s]
 CSSWM_OUTPUTSTEP=1                                    # Output frequency
 CSSWM_DIFFUSION_KX=200000
 CSSWM_DIFFUSION_KY=200000
@@ -20,6 +20,6 @@ VVM_ZRANGE=20000                                      # Domain for z [m]
 VVM_DT=3
 VVM_DX=200
 VVM_DZ=200                                            # Should be same as dx
-VVM_TIMEEND=864000                                     # Integration Time [s]                                
+VVM_TIMEEND=3000                                     # Integration Time [s]                                
 VVM_OUTPUTSTEP=50                                     # Output frequency                 
 VVM_MOISTURE_NUDGE_TIME=7200                             # VVM moisture nudging time scale, if it is 0, the nudge will be closed.

@@ -4,6 +4,10 @@
 
 struct vvm_index {
     int p, i, j;
+    // Inside struct (preferred)
+    bool operator==(const vvm_index& other) const {
+        return p == other.p && i == other.i && j == other.j;
+    }
 };
 
 std::map<std::string, std::string> read_config(const std::string& filename);

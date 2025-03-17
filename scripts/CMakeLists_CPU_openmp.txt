@@ -4,17 +4,14 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-project(TMIF VERSION 1.0.0 LANGUAGES CXX Fortran)
+project(TMIF VERSION 1.0.0 LANGUAGES CXX Fortran)  # Added Fortran language
 
 set(HOME_DIR $ENV{HOME})
 
-# Find MPI package
-find_package(MPI REQUIRED)
-
-# Set MPI compilers
-set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
-set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
-set(CMAKE_Fortran_COMPILER ${MPI_Fortran_COMPILER})
+# Set compilers
+set(CMAKE_C_COMPILER "${HOME_DIR}/gcc13/bin/gcc")
+set(CMAKE_CXX_COMPILER "${HOME_DIR}/gcc13/bin/g++")
+set(CMAKE_Fortran_COMPILER "${HOME_DIR}/gcc13/bin/gfortran")  # Added Fortran compiler
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
@@ -26,21 +23,35 @@ if(USE_PETSC)
     set(PETSC $ENV{PETSC_DIR})
     set(ENV{PKG_CONFIG_PATH} ${PETSC}/lib/pkgconfig)
 
+    # Uncomment these lines if you want PETSc to determine the compilers
+    execute_process(COMMAND pkg-config PETSc --variable=ccompiler COMMAND tr -d '\n' OUTPUT_VARIABLE C_COMPILER)
+    SET(CMAKE_C_COMPILER ${C_COMPILER})
+    
+    execute_process(COMMAND pkg-config PETSc --variable=cxxcompiler COMMAND tr -d '\n' OUTPUT_VARIABLE CXX_COMPILER)
+    if (CXX_COMPILER)
+        SET(CMAKE_CXX_COMPILER ${CXX_COMPILER})
+    endif()
+
+    execute_process(COMMAND pkg-config PETSc --variable=fcompiler COMMAND tr -d '\n' OUTPUT_VARIABLE FORTRAN_COMPILER)
+    if (FORTRAN_COMPILER)
+        SET(CMAKE_Fortran_COMPILER ${FORTRAN_COMPILER})
+    endif()
+
     # Find PETSc using pkg-config
     find_package(PkgConfig REQUIRED)
     pkg_search_module(PETSC REQUIRED IMPORTED_TARGET PETSc)
 endif()
 
-# Remove OpenMP since we're using MPI
-# find_package(OpenMP)
-# if (OPENMP_FOUND)
-#     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-#     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-#     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-#     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-# endif()
+# Find and enable OpenMP if available
+find_package(OpenMP)
+if (OPENMP_FOUND)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+    set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")  # Added for Fortran
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+endif()
 
-# Set Fortran compiler flags
+# Set Fortran compiler flags (similar to successful case)
 set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fPIC -fdefault-real-8")
 
 # Enable exporting compile commands
@@ -50,7 +61,6 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS True)
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/2DVVM/include
     ${HOME_DIR}/local/include
-    ${MPI_INCLUDE_PATH}
 )
 
 # Add PETSc include directories only if PETSc is enabled
@@ -65,10 +75,10 @@ file(GLOB_RECURSE SRC_CXX CSSWM/src/*.cpp CSSWM/src/*.hpp 2DVVM/src/*.cpp 2DVVM/
 list(REMOVE_ITEM SRC_CXX ${CMAKE_CURRENT_SOURCE_DIR}/2DVVM/src/main.cpp)
 list(REMOVE_ITEM SRC_CXX ${CMAKE_CURRENT_SOURCE_DIR}/CSSWM/src/main.cpp)
 
-# Fortran source files
-file(GLOB_RECURSE SRC_Fortran 2DVVM/src/*.f90)
+# Fortran source files (adjust path as needed)
+file(GLOB_RECURSE SRC_Fortran 2DVVM/src/*.f90)  # Add your Fortran files here
 
-# Create a shared library for Fortran code
+# Create a shared library for Fortran code (if applicable, adjust name and files)
 if(SRC_Fortran)
     add_library(fortran_lib SHARED ${SRC_Fortran})
     set_target_properties(fortran_lib PROPERTIES OUTPUT_NAME "fortran_lib")
@@ -79,12 +89,9 @@ add_executable(TMIF ${SRC_CXX})
 
 # Link Fortran library and runtime to the executable
 if(SRC_Fortran)
-    target_link_libraries(TMIF PRIVATE fortran_lib gfortran)
-    add_dependencies(TMIF fortran_lib)
+    target_link_libraries(TMIF PRIVATE fortran_lib gfortran)  # Link Fortran runtime
+    add_dependencies(TMIF fortran_lib)  # Ensure Fortran library is built first
 endif()
-
-# Link MPI libraries
-target_link_libraries(TMIF PRIVATE ${MPI_CXX_LIBRARIES} ${MPI_Fortran_LIBRARIES})
 
 # Link PETSc libraries if PETSc is enabled
 if(USE_PETSC)
@@ -102,12 +109,6 @@ target_link_libraries(TMIF PRIVATE ${libncPath} ${libncxxPath})
 if(USE_PETSC)
     target_link_libraries(TMIF PRIVATE ${libncPath} ${libncxxPath} ${libpetscPath})
 endif()
-
-# Add MPI compile flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MPI_CXX_COMPILE_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MPI_C_COMPILE_FLAGS}")
-set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MPI_Fortran_COMPILE_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MPI_CXX_LINK_FLAGS}")
 
 # CPack settings
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
