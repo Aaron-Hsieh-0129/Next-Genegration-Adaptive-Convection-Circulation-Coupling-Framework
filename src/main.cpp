@@ -11,9 +11,6 @@
 
 using namespace netCDF;
 
-#define PROFILE
-// #define AB2_Couple
-
 void output_forcing(std::string dir, int n, double q[6][NX][NY]);
 
 CSSWM model_csswm;
@@ -25,7 +22,6 @@ extern "C" {
         char* model, int* stat, bool* abort_on_err, bool* dowr, size_t lookup_file_dir_len, size_t model_name_len
     );
 }
-
 
 extern "C" {
     void __microphy_p3_MOD_p3_main(
@@ -66,7 +62,6 @@ int main(int argc, char **argv) {
         0.
     };
 
-    omp_set_num_threads(128);
     Eigen::setNbThreads(1);
 
     // Read configuration file
@@ -140,14 +135,14 @@ int main(int argc, char **argv) {
         for (int i = 0; i < NX; i++) {
             for (int j = 0; j < NY; j++) {
                 path_vvm = path + "vvm/" + std::to_string(p) + "_" + std::to_string(i) + "_" + std::to_string(j) + "/";
-                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, 10, 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
+                config_vvms[p][i][j] = new Config_VVM(createConfig(path_vvm, -1, 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
             }
         }
     }
     // Change some configurations for Bubbles
     for (auto Bubble : Bubbles_p_i_j) {
         path_vvm = path + "vvm/" + std::to_string(Bubble.p) + "_" + std::to_string(Bubble.i) + "_" + std::to_string(Bubble.j) + "/";
-        config_vvms[Bubble.p][Bubble.i][Bubble.j] =  new Config_VVM(createConfig(path_vvm, 1, Bubble_case, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
+        config_vvms[Bubble.p][Bubble.i][Bubble.j] =  new Config_VVM(createConfig(path_vvm, -1, Bubble_case, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
     }
     printf("Configurations are set.\n");
 
@@ -272,22 +267,11 @@ int main(int argc, char **argv) {
 
     double th_mean = 0.;
     double th_mean_all[6][NX][NY];
-    #if defined(AB2_Couple)
-        double Q_all[2][6][NX][NY];
-        double q_all[2][6][NX][NY];
-    #else
-        double Q_all[6][NX][NY];
-        double q_all[6][NX][NY];
-    #endif
+    double Q_all[6][NX][NY];
+    double q_all[6][NX][NY];
 
     int k_couple = vvm_nx - 2;
-    #if defined(Couple_10km)
-        k_couple = 10000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
-    #elif defined(Couple_12km)
-        k_couple = 12000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
-    #else
-        k_couple = vvm_nz - 2;
-    #endif
+    k_couple = 12000. / vvms[NotBubbles_p_i_j[0].p][NotBubbles_p_i_j[0].i][NotBubbles_p_i_j[0].j]->dz;
 
     for (int size = 0; size < total_size; size++) {
         int p = vvms_index[size].p;
@@ -321,7 +305,6 @@ int main(int argc, char **argv) {
             }
         }   
     }
-
 
     // p3 initialization
     #if defined(P3_MICROPHY)
@@ -361,13 +344,8 @@ int main(int argc, char **argv) {
         for (int i = 0; i < NX; i++) {
             for (int j = 0; j < NY; j++) {
                 th_mean_all[p][i][j] = 0.;
-                #if defined(AB2_Couple)
-                    Q_all[0][p][i][j] = Q_all[1][p][i][j] = 0.;
-                    q_all[0][p][i][j] = q_all[1][p][i][j] = 0.;
-                #else
-                    Q_all[p][i][j] = 0.;
-                    q_all[p][i][j] = 0.;
-                #endif
+                Q_all[p][i][j] = 0.;
+                q_all[p][i][j] = 0.;
             }
         }
     }
@@ -450,17 +428,14 @@ int main(int argc, char **argv) {
             th_mean /= ((vvm_nx-2) * k_couple);
             th_mean_all[p][i][j] = th_mean;
 
-            #if defined(AB2_Couple)
-                q_all[(model_csswm.step+1)%2][p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / Couple_time;
-                Q_all[(model_csswm.step+1)%2][p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / Couple_time;
-            #else
-                q_all[p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / Couple_time;
-                // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / Couple_time;
-            #endif
+            q_all[p][i][j] = (model_csswm.csswm[p].hp[i][j] / exchange_coeff - th_mean_all[p][i][j]) / Couple_time;
+            // Q_all[p][i][j] = (exchange_coeff * th_mean_all[p][i][j] - model_csswm.csswm[p].h[i][j]) / Couple_time;
         }
         #ifdef _OPENMP
         #pragma omp barrier
         #endif
+
+        std::cout << th_mean_all[1][46][47] << ", " << th_mean_all[1][47][47] << std::endl;
 
         output_forcing(model_csswm.output_path + (std::string) "q_all/", (int) next_coupling_time / Couple_time, q_all);
 
@@ -610,37 +585,13 @@ int main(int argc, char **argv) {
                 #endif
 
                 // Large Scale Forcing
-                #if defined(PROFILE)
-                    #if defined(AB2_Couple)
-                        double total_heating1 = q_all[model_csswm.step%2][p][i][j] * k_couple;
-                        double total_heating2 = q_all[(model_csswm.step+1)%2][p][i][j] * k_couple;
-                        double heating1 = 0.;
-                        double heating2 = 0.;
-                    #else
-                        double total_heating = q_all[p][i][j] * k_couple;
-                        double heating = 0.;
-                    #endif
-                #endif
+                double total_heating = q_all[p][i][j] * k_couple;
+                double heating = 0.;
 
                 for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
-                    #if defined(PROFILE)
-                        #if defined(AB2_Couple)
-                            heating1 = total_heating1 * heating_weight[k_vvm];
-                            heating2 = total_heating2 * heating_weight[k_vvm];
-                        #else
-                            heating = total_heating * heating_weight[k_vvm];
-                        #endif
-                    #endif
+                    heating = total_heating * heating_weight[k_vvm];
                     for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                        #if defined(PROFILE)
-                            #if defined(AB2_Couple)
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * (1.5*heating2 - 0.5*heating1) * vvms[p][i][j]->dt;
-                            #else
-                                vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
-                            #endif
-                        #else
-                            vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * vvms[p][i][j]->dt * q_all[p][i][j];
-                        #endif
+                        vvms[p][i][j]->thp[i_vvm][k_vvm] += coupling_vvm_param * heating * vvms[p][i][j]->dt;
                     }
                 }
 
@@ -674,9 +625,6 @@ int main(int argc, char **argv) {
             Q_all[p][i][j] = (th_mean * exchange_coeff - model_csswm.csswm[p].h[i][j]);
             model_csswm.csswm[p].h[i][j] = th_mean * exchange_coeff;
             
-            #if defined(AB2_Couple)
-                model_csswm.csswm[p].hp[i][j] += coupling_csswm_param * (1.5*Q_all[(model_csswm.step+1)%2][p][i][j] - 0.5*Q_all[model_csswm.step%2][p][i][j]) * DT;
-            #endif
         }
         #ifdef _OPENMP
         #pragma omp barrier
