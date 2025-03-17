@@ -209,7 +209,7 @@ int main(int argc, char **argv) {
         bool is_bubble = std::find(Bubbles_p_i_j.begin(), Bubbles_p_i_j.end(), vvms_index[v]) != Bubbles_p_i_j.end();
         
         printf("Rank %d: Processing p=%d, i=%d, j=%d. Is bubble: %d\n", rank, p, i, j, is_bubble);
-        config_vvms[local_v] = new Config_VVM(createConfig(path_vvm, 10, 
+        config_vvms[local_v] = new Config_VVM(createConfig(path_vvm, -1, 
                                                 is_bubble ? Bubble_case : 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, 
                                                 vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
 
@@ -235,7 +235,6 @@ int main(int argc, char **argv) {
     }
     MPI_Barrier(MPI_COMM_WORLD);
     printf("Rank: %d. Configurations are set and VVMs are declared and initialized.\n", rank);
-
 
 
     // TODO: Flexible ctl output
@@ -344,6 +343,41 @@ int main(int argc, char **argv) {
             }
         }
     }
+    // Gather updated th_mean to master rank and store in th_mean_all
+    data_send* post_heating_send_data = new data_send[local_size];
+    for (int v = start; v <= end; v++) {
+        int local_v = v - start;
+        int p = vvms_index[v].p;
+        int i = vvms_index[v].i;
+        int j = vvms_index[v].j;
+
+        double th_mean = 0.;
+        for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+            for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
+                th_mean += local_vvms[local_v]->th[i_vvm][k_vvm];
+            }
+        }
+        th_mean /= ((vvm_nx-2) * k_couple);
+        post_heating_send_data[local_v] = {p, i, j, th_mean};
+    }
+
+    data_send* post_heating_gathered_data = (rank == MASTER_RANK) ? new data_send[total_vvm_size] : nullptr;
+    MPI_Gatherv(post_heating_send_data, local_size, data_send_type,
+                post_heating_gathered_data, gather_counts, displs_gather, data_send_type,
+                MASTER_RANK, MPI_COMM_WORLD);
+
+    if (rank == MASTER_RANK) {
+        for (int i = 0; i < total_vvm_size; i++) {
+            int p = post_heating_gathered_data[i].p;
+            int x = post_heating_gathered_data[i].i;
+            int y = post_heating_gathered_data[i].j;
+            th_mean_all[p][x][y] = post_heating_gathered_data[i].value;
+        }
+        delete[] post_heating_gathered_data;
+    }
+    delete[] post_heating_send_data;
+
+
     // p3 initialization
     #if defined(P3_MICROPHY)
 
@@ -600,7 +634,7 @@ int main(int argc, char **argv) {
                 #endif
 
                 // Apply large-scale forcing from master
-                double total_heating = received_data[local_v].value / exchange_coeff;  // Use hp from scattered data
+                double total_heating = received_data[local_v].value * k_couple;  // Use hp from scattered data
                 for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
                     double heating = total_heating * heating_weight[k_vvm];
                     for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {

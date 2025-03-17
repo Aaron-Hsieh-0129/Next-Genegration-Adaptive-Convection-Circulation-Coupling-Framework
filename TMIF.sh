@@ -17,4 +17,4 @@ echo $OMP_NUM_THREADS
 
 rm -rf build
 mkdir build
-cd build/ && cmake ../ && make -j 4 && ./TMIF
+cd build/ && cmake ../ && make -j 4 && mpirun -np 5 ./TMIF
