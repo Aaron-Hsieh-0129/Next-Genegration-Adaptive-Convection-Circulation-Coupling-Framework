@@ -614,6 +614,7 @@ int main(int argc, char **argv) {
             }
             time_vvm = local_vvms[0]->step * local_vvms[0]->dt;
         }
+        MPI_Barrier(MPI_COMM_WORLD);
 
         // Gather th_mean from workers after VVM steps
         data_send* send_data = new data_send[local_size];
