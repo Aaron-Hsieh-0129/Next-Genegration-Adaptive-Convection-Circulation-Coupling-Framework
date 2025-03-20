@@ -1,5 +1,6 @@
 #include "allocate_csswm_vvms.hpp"
 #include "reading_config.hpp"
+#include "../2DVVM/src/Timer.hpp"
 
 #ifdef _OPENMP
     #include <omp.h>
@@ -71,6 +72,28 @@ int main(int argc, char **argv) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    
+    Timer timer_all;
+    if (rank == MASTER_RANK) timer_all.reset();
+
+
+    #if defined(GPU_POISSON)
+        const char* cuda_visible = std::getenv("CUDA_VISIBLE_DEVICES");
+        std::cout << "Rank " << rank << ": CUDA_VISIBLE_DEVICES = " 
+                << (cuda_visible ? cuda_visible : "unset") << std::endl;
+
+        vvm::PoissonSolver::gpu_id = 0;
+        if (cudaSetDevice(vvm::PoissonSolver::gpu_id) != cudaSuccess) {
+            std::cerr << "Rank " << rank << ": Failed to set GPU " << vvm::PoissonSolver::gpu_id << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 1);
+        }
+        int device;
+        cudaGetDevice(&device);
+        std::cout << "Rank " << rank << ": Running on GPU " << device << std::endl;
+        cudaDeviceProp prop;
+        cudaGetDeviceProperties(&prop, device);
+        std::cout << "Rank " << rank << ": Assigned to GPU " << device << " (" << prop.name << ")" << std::endl;
+    #endif
 
     MPI_Datatype data_send_type = create_data_send_type();
 
@@ -209,7 +232,7 @@ int main(int argc, char **argv) {
         bool is_bubble = std::find(Bubbles_p_i_j.begin(), Bubbles_p_i_j.end(), vvms_index[v]) != Bubbles_p_i_j.end();
         
         printf("Rank %d: Processing p=%d, i=%d, j=%d. Is bubble: %d\n", rank, p, i, j, is_bubble);
-        config_vvms[local_v] = new Config_VVM(createConfig(path_vvm, -1, 
+        config_vvms[local_v] = new Config_VVM(createConfig(path_vvm, 10, 
                                                 is_bubble ? Bubble_case : 0, vvm_xrange, vvm_zrange, vvm_dx, vvm_dz, 
                                                 vvm_dt, vvm_timeend, vvm_outputstep, vvm_moisture_nudge_time));
 
@@ -223,6 +246,10 @@ int main(int argc, char **argv) {
         #else
             vvm::Init::Init1d(*local_vvms[local_v]);
             vvm::Init::Init2d(*local_vvms[local_v]);
+            vvm::Output::printInit(*local_vvms[local_v]);
+            #if defined(GPU_POISSON)
+                vvm::PoissonSolver::InitAMGX(*local_vvms[local_v]);
+            #endif
             #ifndef PETSC
                 vvm::PoissonSolver::InitPoissonMatrix(*local_vvms[local_v]);
             #endif
@@ -261,7 +288,6 @@ int main(int argc, char **argv) {
         system(cmd2.c_str());
     }
 
-    double th_mean = 0.;
     double exchange_coeff = 0.;
     double coupling_vvm_param = 1.;
     int k_couple = -9999;
@@ -409,7 +435,6 @@ int main(int argc, char **argv) {
     MPI_Barrier(MPI_COMM_WORLD);
 
     double next_coupling_time = Couple_time;
-    int n_csswm = 0;
     double temp_csswm = csswm_timeend / csswm_dt, temp_vvm = vvm_timeend / vvm_dt;
     int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
@@ -545,7 +570,7 @@ int main(int argc, char **argv) {
                 vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
 
                 vvm::PoissonSolver::pubarTop_pt(*local_vvms[local_v]);
-                vvm::PoissonSolver::cal_w(*local_vvms[local_v], p, i, j);
+                vvm::PoissonSolver::cal_w(*local_vvms[local_v], rank, i, j);
                 vvm::PoissonSolver::cal_u(*local_vvms[local_v]);
 
                 vvm::Iteration::updateMean(*local_vvms[local_v]);
@@ -699,6 +724,12 @@ int main(int argc, char **argv) {
     MPI_Barrier(MPI_COMM_WORLD);
 
     // Cleanup
+    #if defined(GPU_POISSON)
+        for (int v = start; v <= end; v++) {
+            int local_v = v - start;
+            vvm::PoissonSolver::CleanupAMGX(*local_vvms[local_v]);
+        }
+    #endif
     for (int v = 0; v < local_size; v++) {
         delete local_vvms[v];
         delete config_vvms[v];
@@ -716,6 +747,9 @@ int main(int argc, char **argv) {
         delete[] Q_all;
         delete[] q_all;
     }
+
+    if (rank == MASTER_RANK) std::cout << "Total time: " << timer_all.elapsed() << std::endl;
+    
     MPI_Type_free(&data_send_type);
     MPI_Finalize();
     return 0;

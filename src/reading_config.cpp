@@ -97,3 +97,4 @@ bool is_value_in_vvm_index(const std::vector<vvm_index>& indices, int p, int i, 
     }
     return false;
 }
+
