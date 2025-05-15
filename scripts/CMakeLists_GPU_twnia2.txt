@@ -21,7 +21,6 @@ set(CMAKE_CXX_COMPILER "${NVHPC_HOME}/comm_libs/mpi/bin/mpicxx" CACHE PATH "C++ 
 set(CMAKE_Fortran_COMPILER "${GCC_HOME}/bin/gfortran" CACHE PATH "Fortran compiler" FORCE)
 set(CMAKE_CUDA_COMPILER "${NVHPC_HOME}/compilers/bin/nvcc" CACHE PATH "CUDA compiler" FORCE)
 
-
 # Disable dependency file generation (-MF issue) for NVHPC
 if(CMAKE_CXX_COMPILER_ID STREQUAL "NVHPC")
     set(CMAKE_CXX_DEPENDS "")
@@ -41,6 +40,24 @@ endif()
 # Set HOME_DIR
 set(HOME_DIR "/work/aaron900129")
 
+
+# Find MPI (force NVHPC OpenMPI for C/C++)
+set(ENV{OMPI_CC} nvc)
+set(ENV{OMPI_CXX} nvc++)
+set(ENV{OMPI_FC} gfortran) # Set Fortran compiler for MPI, though not used in Fortran
+find_package(MPI REQUIRED)
+
+# Set MPI compilers only for C/C++ (Fortran compiler remains gfortran)
+set(CMAKE_C_COMPILER ${MPI_C_COMPILER})
+set(CMAKE_CXX_COMPILER ${MPI_CXX_COMPILER})
+
+# Set compiler flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 ${MPI_CXX_COMPILE_FLAGS}")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MPI_C_COMPILE_FLAGS}")
+set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fdefault-real-8") # Adjusted to gfortran flags
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MPI_CXX_LINK_FLAGS}")
+
+# Set RPATH usage
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # Option to enable or disable PETSc
@@ -56,27 +73,26 @@ if(USE_PETSC)
     pkg_search_module(PETSC REQUIRED IMPORTED_TARGET PETSc)
 endif()
 
-# Remove OpenMP since we're using MPI
-# find_package(OpenMP)
-# if (OPENMP_FOUND)
-#     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-#     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-#     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
-#     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-# endif()
-
-# Set Fortran compiler flags
-# set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fPIC -fdefault-real-8")
-set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fdefault-real-8")
-
 # Enable exporting compile commands
-set(CMAKE_EXPORT_COMPILE_COMMANDS True)
+set(CMAKE_EXPORT_COMPILE_COMMANDS TRUE)
+
+# Set library and include paths
+set(AMGX_INCLUDE_DIR "/work/aaron900129/amgx_install/include")
+set(AMGX_LIB_DIR "/work/aaron900129/amgx_install/lib")
+set(CUDA_INCLUDE_DIR "/work/aaron900129/nvhpc/Linux_x86_64/21.3/cuda/include")
+set(CUDA_LIB_DIR "/work/aaron900129/nvhpc/Linux_x86_64/21.3/cuda/lib64")
+set(CUDA_MATH_LIB_DIR "/work/aaron900129/nvhpc/Linux_x86_64/21.3/math_libs/lib64") # Updated for math libraries
+set(GCC9_LIB_DIR "/work/aaron900129/gcc13/lib64")
+set(GCC9_LIB32_DIR "/work/aaron900129/gcc13/lib")  # Added for completeness
+
 
 # Include directories
 include_directories(
     ${CMAKE_CURRENT_SOURCE_DIR}/2DVVM/include
     ${HOME_DIR}/local/include
     ${MPI_INCLUDE_PATH}
+    ${AMGX_INCLUDE_DIR}
+    ${CUDA_INCLUDE_DIR}
     ${CMAKE_SOURCE_DIR}/2DVVM/external/rte-rrtmgp-cpp/include
     ${CMAKE_SOURCE_DIR}/2DVVM/external/rte-rrtmgp-cpp/include_test
 )
@@ -119,8 +135,8 @@ if(SRC_Fortran)
     add_dependencies(TMIF fortran_lib)
 endif()
 
-# Link MPI libraries
-target_link_libraries(TMIF PRIVATE ${MPI_CXX_LIBRARIES} ${MPI_Fortran_LIBRARIES})
+# Link MPI libraries (C/C++ only)
+target_link_libraries(TMIF PRIVATE ${MPI_CXX_LIBRARIES})
 
 # Link PETSc libraries if PETSc is enabled
 if(USE_PETSC)
@@ -131,19 +147,35 @@ endif()
 find_library(libncPath netcdf "${HOME_DIR}/local/lib")
 find_library(libncxxPath netcdf_c++4 "${HOME_DIR}/local/lib")
 find_library(libpetscPath petsc "${HOME_DIR}/local/petsc/lib")
+find_library(AMGXSH_LIBRARY amgxsh ${AMGX_LIB_DIR})
+find_library(CUDART_LIBRARY cudart ${CUDA_LIB_DIR})
+# Explicitly find CUDA math libraries
+find_library(CUBLAS_LIBRARY cublas ${CUDA_MATH_LIB_DIR})
+find_library(CUSPARSE_LIBRARY cusparse ${CUDA_MATH_LIB_DIR})
+find_library(CUSOLVER_LIBRARY cusolver ${CUDA_MATH_LIB_DIR})
+find_library(CUBLASLT_LIBRARY cublasLt ${CUDA_MATH_LIB_DIR})
 
-target_link_libraries(TMIF PRIVATE ${libncPath} ${libncxxPath} rte_rrtmgp)
+set_target_properties(TMIF PROPERTIES
+    LINK_FLAGS "-Wl,-rpath,${GCC9_LIB_DIR} -Wl,-rpath,${GCC9_LIB32_DIR} -Wl,-rpath,${CUDA_LIB_DIR} -Wl,-rpath,${CUDA_MATH_LIB_DIR} -Wl,-rpath,${AMGX_LIB_DIR}"
+)
+
+target_link_libraries(TMIF PRIVATE
+    ${libncPath}
+    ${libncxxPath}
+    ${AMGXSH_LIBRARY}
+    ${CUDART_LIBRARY}
+    ${CUBLAS_LIBRARY}
+    ${CUSPARSE_LIBRARY}
+    ${CUSOLVER_LIBRARY}
+    ${CUBLASLT_LIBRARY}
+    stdc++
+    rte_rrtmgp
+)
 
 # Link PETSc libraries conditionally
 if(USE_PETSC)
-    target_link_libraries(TMIF PRIVATE ${libncPath} ${libncxxPath} ${libpetscPath} )
+    target_link_libraries(TMIF PRIVATE ${libncPath} ${libncxxPath} ${libpetscPath})
 endif()
-
-# Add MPI compile flags
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${MPI_CXX_COMPILE_FLAGS}")
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${MPI_C_COMPILE_FLAGS}")
-set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${MPI_Fortran_COMPILE_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${MPI_CXX_LINK_FLAGS}")
 
 # CPack settings
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
