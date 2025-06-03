@@ -12,12 +12,14 @@ endif()
 
 
 # Allow user to specify NVHPC and GCC installation paths
-set(NVHPC_HOME "/work/aaron900129/nvhpc/Linux_x86_64/21.3" CACHE STRING "Path to NVHPC installation")
-set(GCC_HOME "/work/aaron900129/gcc9" CACHE STRING "Path to GCC installation")
+set(NVHPC_HOME "/home/Aaron/nvhpc/Linux_x86_64/21.3" CACHE STRING "Path to NVHPC installation")
+set(GCC_HOME "/home/Aaron/gcc13" CACHE STRING "Path to GCC installation")
 
 # Set compilers explicitly before project()
-set(CMAKE_C_COMPILER "${NVHPC_HOME}/comm_libs/mpi/bin/mpicc" CACHE PATH "C compiler" FORCE)
-set(CMAKE_CXX_COMPILER "${NVHPC_HOME}/comm_libs/mpi/bin/mpicxx" CACHE PATH "C++ compiler" FORCE)
+# set(CMAKE_C_COMPILER "${NVHPC_HOME}/comm_libs/mpi/bin/mpicc" CACHE PATH "C compiler" FORCE)
+# set(CMAKE_CXX_COMPILER "${NVHPC_HOME}/comm_libs/mpi/bin/mpicxx" CACHE PATH "C++ compiler" FORCE)
+set(CMAKE_C_COMPILER "/home/Aaron/openmpi/bin/mpicc" CACHE PATH "C compiler" FORCE)
+set(CMAKE_CXX_COMPILER "/home/Aaron/openmpi/bin/mpicxx" CACHE PATH "C++ compiler" FORCE)
 set(CMAKE_Fortran_COMPILER "${GCC_HOME}/bin/gfortran" CACHE PATH "Fortran compiler" FORCE)
 set(CMAKE_CUDA_COMPILER "${NVHPC_HOME}/compilers/bin/nvcc" CACHE PATH "CUDA compiler" FORCE)
 
@@ -39,7 +41,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # Set HOME_DIR
-set(HOME_DIR "/work/aaron900129")
+set(HOME_DIR "/home/Aaron")
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
@@ -64,6 +66,13 @@ endif()
 #     set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} ${OpenMP_Fortran_FLAGS}")
 #     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
 # endif()
+
+# Set compiler flags
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17 -Wall")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 
 # Set Fortran compiler flags
 # set(CMAKE_Fortran_FLAGS "${CMAKE_Fortran_FLAGS} -cpp -fPIC -fdefault-real-8")

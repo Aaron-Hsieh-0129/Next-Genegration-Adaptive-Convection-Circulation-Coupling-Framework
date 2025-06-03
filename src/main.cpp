@@ -369,24 +369,25 @@ int main(int argc, char **argv) {
     std::cout << "exchange_coeff: " << exchange_coeff << std::endl;
 
     // Apply initial heating
-    for (int v = start; v <= end; v++) {
-        int local_v = v - start;
-        int p = vvms_index[v].p;
-        int i = vvms_index[v].i;
-        int j = vvms_index[v].j;
+    if (!NotBubbles_p_i_j.empty()) {
+        for (int v = start; v <= end; v++) {
+            int local_v = v - start;
+            int p = vvms_index[v].p;
+            int i = vvms_index[v].i;
+            int j = vvms_index[v].j;
 
-        // if (Bubbles_p_i_j[local_v].p == p && Bubbles_p_i_j[local_v].i == i && Bubbles_p_i_j[local_v].j == j) {
-        if (NotBubbles_p_i_j[local_v].p == p && NotBubbles_p_i_j[local_v].i == i && NotBubbles_p_i_j[local_v].j == j) {
-            double total_heating = received_data[local_v].value;
-            for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
-                double heating = total_heating * heating_weight[k_vvm];
-                for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
-                    local_vvms[local_v]->th[i_vvm][k_vvm] += heating;
-                    local_vvms[local_v]->thm[i_vvm][k_vvm] = local_vvms[local_v]->th[i_vvm][k_vvm];
+            // if (Bubbles_p_i_j[local_v].p == p && Bubbles_p_i_j[local_v].i == i && Bubbles_p_i_j[local_v].j == j) {
+            if (NotBubbles_p_i_j[local_v].p == p && NotBubbles_p_i_j[local_v].i == i && NotBubbles_p_i_j[local_v].j == j) {
+                double total_heating = received_data[local_v].value;
+                for (int k_vvm = 1; k_vvm <= k_couple; k_vvm++) {
+                    double heating = total_heating * heating_weight[k_vvm];
+                    for (int i_vvm = 1; i_vvm <= vvm_nx-2; i_vvm++) {
+                        local_vvms[local_v]->th[i_vvm][k_vvm] += heating;
+                        local_vvms[local_v]->thm[i_vvm][k_vvm] = local_vvms[local_v]->th[i_vvm][k_vvm];
+                    }
                 }
             }
         }
-
     }
     // Gather updated th_mean to master rank and store in th_mean_all
     data_send* post_heating_send_data = new data_send[local_size];
@@ -456,7 +457,6 @@ int main(int argc, char **argv) {
     double temp_csswm = csswm_timeend / csswm_dt, temp_vvm = vvm_timeend / vvm_dt;
     int nmax_csswm = (int) temp_csswm, nmax_vvm = (int) temp_vvm;
 
-    double time_vvm = local_vvms[0]->step * local_vvms[0]->dt;
     while (true) {
          // Compute loop condition on all ranks for VVM and on master for CSSWM
         int vvm_continue = (local_vvms[0]->step < nmax_vvm);
@@ -469,7 +469,7 @@ int main(int argc, char **argv) {
         double time_csswm = (rank == MASTER_RANK) ? model_csswm->step * DT : 0.0;
 
         if (rank == MASTER_RANK) {
-            while (next_coupling_time != time_csswm) {
+            while (next_coupling_time != time_csswm && time_csswm <= csswm_timeend) {
                 printf("csswm_step: %d, csswm_time: %f\n", model_csswm->step, time_csswm);
                 if (model_csswm->step % model_csswm->outputstep == 0 || 
                     model_csswm->step == model_csswm->timeend-1 || 
@@ -538,7 +538,7 @@ int main(int argc, char **argv) {
                      received_data, scatter_counts[rank], data_send_type,
                      MASTER_RANK, MPI_COMM_WORLD);
 
-        while (time_vvm < next_coupling_time) {
+        while (time_vvm < next_coupling_time && time_vvm <= vvm_timeend) {
             printf("VVM step: %d, time: %f\n", local_vvms[0]->step, time_vvm);
 
             for (int v = start; v <= end; v++) {
@@ -578,7 +578,6 @@ int main(int argc, char **argv) {
                     if (local_vvms[local_v]->step * local_vvms[local_v]->dt <= local_vvms[local_v]->addforcingtime) local_vvms[local_v]->status_for_adding_forcing = true;
                     else local_vvms[local_v]->status_for_adding_forcing = false;
 
-
                     if (local_vvms[local_v]->status_for_adding_forcing) {
                         if (std::find(Bubbles_p_i_j.begin(), Bubbles_p_i_j.end(), vvms_index[v]) != Bubbles_p_i_j.end()) {
                             // Add random perturbation for Bubble case with a random seed
@@ -599,10 +598,10 @@ int main(int argc, char **argv) {
                 vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
                 #if defined(WATER)
                     #if defined(KESSLER_MICROPHY)
-                        vvm::NumericalProcess::autoconversion(*local_vvms[local_v]);
-                        vvm::NumericalProcess::accretion(*local_vvms[local_v]);
-                        vvm::NumericalProcess::evaporation(*local_vvms[local_v]);
-                        vvm::NumericalProcess::condensation(*local_vvms[local_v]);
+                        vvm::MicroPhysics::autoconversion(*local_vvms[local_v]);
+                        vvm::MicroPhysics::accretion(*local_vvms[local_v]);
+                        vvm::MicroPhysics::evaporation(*local_vvms[local_v]);
+                        vvm::MicroPhysics::condensation(*local_vvms[local_v]);
                     #endif
                     vvm::NumericalProcess::NegativeValueProcess(local_vvms[local_v]->qvp, local_vvms[local_v]->nx, local_vvms[local_v]->nz);
                     vvm::NumericalProcess::NegativeValueProcess(local_vvms[local_v]->qcp, local_vvms[local_v]->nx, local_vvms[local_v]->nz);
@@ -676,9 +675,13 @@ int main(int argc, char **argv) {
                 #else
                     vvm::Turbulence::RKM_RKH(*local_vvms[local_v]);
                 #endif
+                vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
+
                 // Nudging process to damp the gravity wave
                 vvm::NumericalProcess::GravityWaveDampingExponential(*local_vvms[local_v]);
-                if (vvm_moisture_nudge_time != 0 && local_vvms[local_v]->CASE == 1) vvm::NumericalProcess::Nudge_qv(*local_vvms[local_v]);
+                vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
+                
+                // if (vvm_moisture_nudge_time != 0 && local_vvms[local_v]->CASE == 1) vvm::NumericalProcess::Nudge_qv(*local_vvms[local_v]);
                 vvm::BoundaryProcess2D_all(*local_vvms[local_v]);
 
                 #if defined(TIMEFILTER)
@@ -774,7 +777,7 @@ int main(int argc, char **argv) {
     }
     MPI_Barrier(MPI_COMM_WORLD);
 
-// Cleanup
+    // Cleanup
     #if defined(GPU_POISSON)
         for (int v = start; v <= end; v++) {
             int local_v = v - start;

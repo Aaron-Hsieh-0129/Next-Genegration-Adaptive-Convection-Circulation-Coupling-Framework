@@ -1,8 +1,8 @@
-OUTPUTPATH=/work/aaron900129/NextACC/DATA/0516/Bubble_origin/
+OUTPUTPATH=/home/Aaron/NextACC_twnia3/DATA/0516/test/
 SEED=0                                          # random seed for initial perturbation in the CRM bottom
 COUPLETIME=3600                                # Coupling time for NextGCC [s]
 Bubble_p_i_j=[(1,47,47)]          # CRMs with bubble inside
-NotBubble_p_i_j=[(0,45,47)]                 # CRMs with nothing inside
+NotBubble_p_i_j=[]                 # CRMs with nothing inside
 BubbleCase=1                                          # Case0: Nothing, Case1: Bubble, Case2: Bubble+wind shear
 CSSWM_GRAVITY=0.4                        # gravity wave speed for CSSWM
 
