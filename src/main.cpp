@@ -480,8 +480,8 @@ int main(int argc, char **argv) {
                 }
 
                 #if defined(EquatorialWave)
-                    if (model_csswm.step * model_csswm.dt >= model_csswm.addforcingtime) model_csswm.status_add_forcing = false;
-                    else model_csswm.status_add_forcing = true;
+                    if (model_csswm->step * model_csswm->dt >= model_csswm->addforcingtime) model_csswm->status_add_forcing = false;
+                    else model_csswm->status_add_forcing = true;
                 #endif
 
                 // Prediction for CSSWM
