@@ -1,4 +1,4 @@
-# Next Genegration Adaptive Convection-Circulation Coupling Framework
+# Next-Generation Adaptive Convection-Circulation Coupling Framework
 
 
 Please refer to https://aaron-hsieh-0129.github.io/models-web/ to get the examples and the documentations.
